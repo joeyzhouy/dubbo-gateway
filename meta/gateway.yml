@@ -1,0 +1,6 @@
+dbconfig:
+  db_dialect: mysql
+  db_config: "root:root@(127.0.0.1:3306)/henkel?charset=utf8mb4&parseTime=True&loc=Local"
+  db_maxopen: 100
+  db_maxidle: 10
+  db_maxlifetime: 5
