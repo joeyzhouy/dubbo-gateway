@@ -1,3 +1,12 @@
+deploy:
+  model: "single" #single/multiple
+  multiple:
+    coordination:
+      protocol: "zookeeper"
+      timeout: "3s"
+      address: "127.0.0.1:2181"
+      username: ""
+      password: ""
 dbconfig:
   db_dialect: mysql
   db_config: "root:root@(127.0.0.1:3306)/henkel?charset=utf8mb4&parseTime=True&loc=Local"

@@ -14,6 +14,7 @@ type RegisterService interface {
 	AddRegistryConfig(config entry.Registry) error
 	DeleteRegistryConfig(registryId, userId int64) error
 	ListRegistryByUser(userId int64) ([]entry.Registry, error)
+	RegisterDetail(userId, registerId int64) (*entry.Registry, error)
 }
 
 func NewRegistryService() RegisterService {
@@ -22,6 +23,18 @@ func NewRegistryService() RegisterService {
 
 type registryService struct {
 	*gorm.DB
+}
+
+func (d *registryService) RegisterDetail(userId, registerId int64) (*entry.Registry, error) {
+	reg := new(entry.Registry)
+	err := d.Where("id = ?", registerId).Find(&reg).Error
+	if err != nil {
+		return nil, err
+	}
+	if userId != reg.UserId {
+		return nil, NoRight
+	}
+	return reg, nil
 }
 
 func (d *registryService) AddRegistryConfig(config entry.Registry) error {
