@@ -33,101 +33,101 @@ type dubboController struct {
 
 func (d *dubboController) GetRegisterDetail(ctx *gin.Context) {
 	if idStr, ok := ctx.GetQuery("id"); ok {
-		if id, err := strconv.ParseInt(idStr, 10, 64); isErrorEmpty(err, ctx) {
-			if user, err := web.GetSessionUser(ctx); isErrorEmpty(err, ctx) {
+		if id, err := strconv.ParseInt(idStr, 10, 64); web.isErrorEmpty(err, ctx) {
+			if user, err := web.GetSessionUser(ctx); web.isErrorEmpty(err, ctx) {
 				result, err := d.RegisterService.RegisterDetail(user.ID, id)
-				operateResponse(result, err, ctx)
+				web.operateResponse(result, err, ctx)
 			}
 		}
 	} else {
-		ParamMissResponseOperation(ctx)
+		web.ParamMissResponseOperation(ctx)
 	}
 }
 
 func (d *dubboController) ListByUser(ctx *gin.Context) {
-	if user, err := web.GetSessionUser(ctx); isErrorEmpty(err, ctx) {
+	if user, err := web.GetSessionUser(ctx); web.isErrorEmpty(err, ctx) {
 		result, err := d.RegisterService.ListRegistryByUser(user.ID)
-		operateResponse(result, err, ctx)
+		web.operateResponse(result, err, ctx)
 	}
 }
 
 func (d *dubboController) CreateRegister(ctx *gin.Context) {
 	reg := new(entry.Registry)
-	if isErrorEmpty(ctx.ShouldBindJSON(reg), ctx) {
+	if web.isErrorEmpty(ctx.ShouldBindJSON(reg), ctx) {
 		if reg.Name == "" || reg.Address == "" || reg.Protocol == "" {
-			ParamMissResponseOperation(ctx)
+			web.ParamMissResponseOperation(ctx)
 			return
 		}
-		if user, err := web.GetSessionUser(ctx); isErrorEmpty(err, ctx) {
+		if user, err := web.GetSessionUser(ctx); web.isErrorEmpty(err, ctx) {
 			reg.UserId = user.ID
-			operateResponse(nil, d.AddRegistryConfig(*reg), ctx)
+			web.operateResponse(nil, d.AddRegistryConfig(*reg), ctx)
 		}
 	}
 }
 
 func (d *dubboController) DeleteRegister(ctx *gin.Context) {
 	if idStr, ok := ctx.GetQuery("id"); ok {
-		if id, err := strconv.ParseInt(idStr, 10, 64); isErrorEmpty(err, ctx) {
-			if user, err := web.GetSessionUser(ctx); isErrorEmpty(err, ctx) {
-				operateResponse(nil, d.RegisterService.DeleteRegistryConfig(id, user.ID), ctx)
+		if id, err := strconv.ParseInt(idStr, 10, 64); web.isErrorEmpty(err, ctx) {
+			if user, err := web.GetSessionUser(ctx); web.isErrorEmpty(err, ctx) {
+				web.operateResponse(nil, d.RegisterService.DeleteRegistryConfig(id, user.ID), ctx)
 			}
 		}
 	} else {
-		ParamMissResponseOperation(ctx)
+		web.ParamMissResponseOperation(ctx)
 	}
 }
 
 func (d *dubboController) AddMethod(ctx *gin.Context) {
 	method := new(vo.Method)
-	if isErrorEmpty(ctx.ShouldBindJSON(method), ctx) {
+	if web.isErrorEmpty(ctx.ShouldBindJSON(method), ctx) {
 		if method.MethodName == "" || method.ReferenceId == 0 ||
 			len(method.Params) == 0 {
-			ParamMissResponseOperation(ctx)
+			web.ParamMissResponseOperation(ctx)
 			return
 		}
-		operateResponse(nil, d.MethodService.AddMethod(method), ctx)
+		web.operateResponse(nil, d.MethodService.AddMethod(method), ctx)
 	}
 }
 
 func (d *dubboController) GetMethodDetail(ctx *gin.Context) {
 	if idStr, ok := ctx.GetQuery("id"); ok {
-		if id, err := strconv.ParseInt(idStr, 10, 64); isErrorEmpty(err, ctx) {
+		if id, err := strconv.ParseInt(idStr, 10, 64); web.isErrorEmpty(err, ctx) {
 			result, err := d.MethodService.GetMethodDetail(id)
-			operateResponse(result, err, ctx)
+			web.operateResponse(result, err, ctx)
 		}
 	} else {
-		ParamMissResponseOperation(ctx)
+		web.ParamMissResponseOperation(ctx)
 	}
 }
 
 func (d *dubboController) DeleteMethod(ctx *gin.Context) {
 	if idStr, ok := ctx.GetQuery("id"); ok {
-		if id, err := strconv.ParseInt(idStr, 10, 64); isErrorEmpty(err, ctx) {
-			operateResponse(nil, d.MethodService.DeleteMethod(id), ctx)
+		if id, err := strconv.ParseInt(idStr, 10, 64); web.isErrorEmpty(err, ctx) {
+			web.operateResponse(nil, d.MethodService.DeleteMethod(id), ctx)
 		}
 	} else {
-		ParamMissResponseOperation(ctx)
+		web.ParamMissResponseOperation(ctx)
 	}
 }
 
 func (d *dubboController) GetMethodsByReference(ctx *gin.Context) {
 	if idStr, ok := ctx.GetQuery("id"); ok {
-		if id, err := strconv.ParseInt(idStr, 10, 64); isErrorEmpty(err, ctx) {
+		if id, err := strconv.ParseInt(idStr, 10, 64); web.isErrorEmpty(err, ctx) {
 			result, err := d.MethodService.GetMethodsByReferenceId(id);
-			operateResponse(result, err, ctx)
+			web.operateResponse(result, err, ctx)
 		}
 	} else {
-		ParamMissResponseOperation(ctx)
+		web.ParamMissResponseOperation(ctx)
 	}
 }
 
 func (d *dubboController) ListByUserIdAndMethodName(ctx *gin.Context) {
 	if methodName, ok := ctx.GetQuery("methodName"); ok {
-		if user, err := web.GetSessionUser(ctx); isErrorEmpty(err, ctx) {
+		if user, err := web.GetSessionUser(ctx); web.isErrorEmpty(err, ctx) {
 			result, err := d.MethodService.ListByUserIdAndMethodName(user.ID, methodName)
-			operateResponse(result, err, ctx)
+			web.operateResponse(result, err, ctx)
 		}
 	} else {
-		ParamMissResponseOperation(ctx)
+		web.ParamMissResponseOperation(ctx)
 	}
 }

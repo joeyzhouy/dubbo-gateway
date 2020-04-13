@@ -1,12 +1,16 @@
 deploy:
   model: "single" #single/multiple
   multiple:
+    port: 8888
     coordination:
       protocol: "zookeeper"
       timeout: "3s"
       address: "127.0.0.1:2181"
       username: ""
       password: ""
+router:
+  port: 8088
+  prefix: ""
 dbconfig:
   db_dialect: mysql
   db_config: "root:root@(127.0.0.1:3306)/henkel?charset=utf8mb4&parseTime=True&loc=Local"
@@ -15,6 +19,7 @@ dbconfig:
   db_maxlifetime: 5
 web:
   name: "dobbo-gateway"
+  port: 8090
   session:
     type: "cookie"
     timeout: 1800

@@ -1,12 +1,12 @@
 package web
 
 import (
-	"bufio"
-	"bytes"
 	"dubbo-gateway/common/constant"
+	"dubbo-gateway/common/extension"
 	"dubbo-gateway/conf"
 	"dubbo-gateway/service/entry"
 	"encoding/json"
+	"fmt"
 	"github.com/apache/dubbo-go/common/logger"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
@@ -16,7 +16,6 @@ import (
 	"gopkg.in/yaml.v2"
 	"net/http"
 	"path/filepath"
-	"time"
 )
 
 const (
@@ -27,6 +26,8 @@ const (
 )
 
 type WebConfig struct {
+	Name   string `yaml:"name"`
+	Port   int    `yaml:"port"`
 	Config struct {
 		Session struct {
 			Type    string `yaml:"type"`
@@ -43,25 +44,27 @@ type WebConfig struct {
 
 var r *gin.Engine
 var authGroup *gin.RouterGroup
+var webConfig *WebConfig
 
 func init() {
-	confStr, err := conf.GetConfig(constant.CONF_GATEWAY_FILE_PATH, "")
+	confStr, err := conf.GetConfig(constant.ConfGatewayFilePath, constant.DefaultGatewayFilePath)
 	if err != nil {
 		logger.Errorf("get config error: %v", perrors.WithStack(err))
 		return
 	}
-	config := new(WebConfig)
-	err = yaml.Unmarshal([]byte(confStr), config)
+	webConfig := new(WebConfig)
+	err = yaml.Unmarshal([]byte(confStr), webConfig)
 	if err != nil {
 		logger.Errorf("yaml.Unmarshal() = error:%v", perrors.WithStack(err))
 		return
 	}
-	store, err := getSessionStore(*config)
+	store, err := getSessionStore(*webConfig)
 	if err != nil {
 		logger.Errorf("init session store error: %v", perrors.WithStack(err))
 		return
 	}
-	r.Use(LoggerWithWriter(), gin.Recovery())
+	r = gin.New()
+	r.Use(extension.LoggerWithWriter(), gin.Recovery())
 	r.Use(sessions.Sessions("session", store))
 	resourcesPath, err := filepath.Abs("web/resources")
 	if err != nil {
@@ -81,6 +84,10 @@ func GetEngine() *gin.Engine {
 
 func AuthGroup() *gin.RouterGroup {
 	return authGroup
+}
+
+func Run() error {
+	return r.Run(fmt.Sprintf(":%d", webConfig.Port))
 }
 
 func Auth() gin.HandlerFunc {
@@ -127,49 +134,4 @@ func getSessionStore(config WebConfig) (sessions.Store, error) {
 			redisConfig.Address, redisConfig.Password, []byte("secret"))
 	}
 	return nil, perrors.Errorf("not support session type: %s", config.Config.Session.Type)
-}
-
-func LoggerWithWriter(notlogged ...string) gin.HandlerFunc {
-	var skip map[string]struct{}
-	if length := len(notlogged); length > 0 {
-		skip = make(map[string]struct{}, length)
-		for _, path := range notlogged {
-			skip[path] = struct{}{}
-		}
-	}
-
-	return func(c *gin.Context) {
-		start := time.Now()
-		path := c.Request.URL.Path
-		raw := c.Request.URL.RawQuery
-		w := bufio.NewWriter(c.Writer)
-		buff := bytes.Buffer{}
-		newWriter := &bufferedWriter{c.Writer, w, buff}
-		c.Writer = newWriter
-		c.Next()
-		if _, ok := skip[path]; !ok {
-			end := time.Now()
-			latency := end.Sub(start)
-			clientIP := c.ClientIP()
-			method := c.Request.Method
-			statusCode := c.Writer.Status()
-			if raw != "" {
-				path = path + "?" + raw
-			}
-			//log.Infof(" | %d | %13v | %15s | %s | %s ", statusCode, latency, clientIP, method, path)
-			logger.Infof(" | %d | %13v | %15s | %s | %s /n %s", statusCode, latency, clientIP, method, path, newWriter.Buffer.Bytes())
-			_ = w.Flush()
-		}
-	}
-}
-
-type bufferedWriter struct {
-	gin.ResponseWriter
-	out    *bufio.Writer
-	Buffer bytes.Buffer
-}
-
-func (g *bufferedWriter) Write(data []byte) (int, error) {
-	g.Buffer.Write(data)
-	return g.out.Write(data)
 }

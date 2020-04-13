@@ -22,31 +22,31 @@ type routerController struct {
 
 func (r *routerController) CreateRouter(ctx *gin.Context) {
 	api := new(entry.ApiConfig)
-	if isErrorEmpty(ctx.ShouldBindJSON(api), ctx) {
+	if web.isErrorEmpty(ctx.ShouldBindJSON(api), ctx) {
 		if api.Uri == "" || api.MethodId == 0 {
-			ParamMissResponseOperation(ctx)
+			web.ParamMissResponseOperation(ctx)
 			return
 		}
-		if user, err := web.GetSessionUser(ctx); isErrorEmpty(err, ctx) {
+		if user, err := web.GetSessionUser(ctx); web.isErrorEmpty(err, ctx) {
 			api.UserId = user.ID
-			operateResponse(nil, r.RouterService.AddRouter(api), ctx)
+			web.operateResponse(nil, r.RouterService.AddRouter(api), ctx)
 		}
 	}
 }
 
 func (r *routerController) DeleteRouter(ctx *gin.Context) {
 	if idStr, ok := ctx.GetQuery("id"); ok {
-		if id, err := strconv.ParseInt(idStr, 10, 64); isErrorEmpty(err, ctx) {
-			operateResponse(nil, r.RouterService.DeleteRouter(id), ctx)
+		if id, err := strconv.ParseInt(idStr, 10, 64); web.isErrorEmpty(err, ctx) {
+			web.operateResponse(nil, r.RouterService.DeleteRouter(id), ctx)
 		}
 	} else {
-		ParamMissResponseOperation(ctx)
+		web.ParamMissResponseOperation(ctx)
 	}
 }
 
 func (r *routerController) ListByUser(ctx *gin.Context) {
-	if user, err := web.GetSessionUser(ctx); isErrorEmpty(err, ctx) {
+	if user, err := web.GetSessionUser(ctx); web.isErrorEmpty(err, ctx) {
 		result, err := r.RouterService.ListRouterByUserId(user.ID)
-		operateResponse(result, err, ctx)
+		web.operateResponse(result, err, ctx)
 	}
 }

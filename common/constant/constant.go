@@ -1,5 +1,6 @@
 package constant
 
 const (
-	CONF_GATEWAY_FILE_PATH = "CONF_GATEWAY_FILE_PATH"
+	ConfGatewayFilePath = "CONF_GATEWAY_FILE_PATH"
+	DefaultGatewayFilePath = "meta/gateway.yml"
 )

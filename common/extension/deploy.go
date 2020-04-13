@@ -13,6 +13,7 @@ type Deploy struct {
 	Config struct {
 		Model    string `yaml:"model"`
 		Multiple struct {
+			Port         int `yaml:"port"`
 			Coordination struct {
 				Protocol string        `yaml:"protocol"`
 				Timeout  time.Duration `yaml:"timeout"`
@@ -27,7 +28,7 @@ type Deploy struct {
 var deployConfig *Deploy
 
 func init() {
-	configStr, err := conf.GetConfig(constant.CONF_GATEWAY_FILE_PATH, "meta/gateway.xml")
+	configStr, err := conf.GetConfig(constant.ConfGatewayFilePath, constant.DefaultGatewayFilePath)
 	deployConfig = new(Deploy)
 	err = yaml.Unmarshal([]byte(configStr), deployConfig)
 	if err != nil {

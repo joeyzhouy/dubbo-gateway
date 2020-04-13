@@ -17,8 +17,8 @@ type zkRegistry struct {
 	Cli *zkClient
 }
 
-func newZkRegistry(node *extension.Node) (registry.Registry, error) {
-	config := extension.GetDeployConfig().Config.Multiple.Coordination
+func newZkRegistry(deploy extension.Deploy) (registry.Registry, error) {
+	config := deploy.Config.Multiple.Coordination
 	zkAddresses := make([]string, 0)
 	for _, str := range strings.Split(config.Address, ",") {
 		zkAddresses = append(zkAddresses, strings.TrimSpace(str))
