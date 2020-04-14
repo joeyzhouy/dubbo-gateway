@@ -1,6 +1,7 @@
 package console
 
 import (
+	"dubbo-gateway/common/utils"
 	"dubbo-gateway/service"
 	"dubbo-gateway/service/entry"
 	"dubbo-gateway/web"
@@ -22,31 +23,31 @@ type routerController struct {
 
 func (r *routerController) CreateRouter(ctx *gin.Context) {
 	api := new(entry.ApiConfig)
-	if web.isErrorEmpty(ctx.ShouldBindJSON(api), ctx) {
+	if utils.IsErrorEmpty(ctx.ShouldBindJSON(api), ctx) {
 		if api.Uri == "" || api.MethodId == 0 {
-			web.ParamMissResponseOperation(ctx)
+			utils.ParamMissResponseOperation(ctx)
 			return
 		}
-		if user, err := web.GetSessionUser(ctx); web.isErrorEmpty(err, ctx) {
+		if user, err := web.GetSessionUser(ctx); utils.IsErrorEmpty(err, ctx) {
 			api.UserId = user.ID
-			web.operateResponse(nil, r.RouterService.AddRouter(api), ctx)
+			utils.OperateResponse(nil, r.RouterService.AddRouter(api), ctx)
 		}
 	}
 }
 
 func (r *routerController) DeleteRouter(ctx *gin.Context) {
 	if idStr, ok := ctx.GetQuery("id"); ok {
-		if id, err := strconv.ParseInt(idStr, 10, 64); web.isErrorEmpty(err, ctx) {
-			web.operateResponse(nil, r.RouterService.DeleteRouter(id), ctx)
+		if id, err := strconv.ParseInt(idStr, 10, 64); utils.IsErrorEmpty(err, ctx) {
+			utils.OperateResponse(nil, r.RouterService.DeleteRouter(id), ctx)
 		}
 	} else {
-		web.ParamMissResponseOperation(ctx)
+		utils.ParamMissResponseOperation(ctx)
 	}
 }
 
 func (r *routerController) ListByUser(ctx *gin.Context) {
-	if user, err := web.GetSessionUser(ctx); web.isErrorEmpty(err, ctx) {
+	if user, err := web.GetSessionUser(ctx); utils.IsErrorEmpty(err, ctx) {
 		result, err := r.RouterService.ListRouterByUserId(user.ID)
-		web.operateResponse(result, err, ctx)
+		utils.OperateResponse(result, err, ctx)
 	}
 }

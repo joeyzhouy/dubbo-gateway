@@ -1,6 +1,7 @@
 package console
 
 import (
+	"dubbo-gateway/common/utils"
 	"dubbo-gateway/service"
 	"dubbo-gateway/service/entry"
 	"dubbo-gateway/web"
@@ -21,26 +22,26 @@ type userController struct {
 
 func (u *userController) Login(ctx *gin.Context) {
 	user := new(entry.User)
-	if web.isErrorEmpty(ctx.ShouldBindJSON(user), ctx) {
+	if utils.IsErrorEmpty(ctx.ShouldBindJSON(user), ctx) {
 		if user.Name == "" || user.Password == "" {
-			web.ParamMissResponseOperation(ctx)
+			utils.ParamMissResponseOperation(ctx)
 			return
 		}
 		if dbUser, err := u.GetUser(user.Name, user.Password);
-			web.isErrorEmpty(err, ctx) {
-			web.operateResponse(nil, web.SaveUser(dbUser, ctx), ctx)
+			utils.IsErrorEmpty(err, ctx) {
+			utils.OperateResponse(nil, web.SaveUser(dbUser, ctx), ctx)
 		}
 	}
 }
 
 func (u *userController) CreateUser(ctx *gin.Context) {
 	user := new(entry.User)
-	if web.isErrorEmpty(ctx.ShouldBindJSON(user), ctx) {
+	if utils.IsErrorEmpty(ctx.ShouldBindJSON(user), ctx) {
 		if user.Name == "" || user.Password == "" || user.Email == "" {
-			web.ParamMissResponseOperation(ctx)
+			utils.ParamMissResponseOperation(ctx)
 			return
 		}
-		web.operateResponse(nil, u.CommonService.CreateUser(user), ctx)
+		utils.OperateResponse(nil, u.CommonService.CreateUser(user), ctx)
 	}
 }
 
@@ -52,13 +53,13 @@ type UpdatePassword struct {
 
 func (u *userController) UpdatePassword(ctx *gin.Context) {
 	updatePassword := new(UpdatePassword)
-	if web.isErrorEmpty(ctx.ShouldBindJSON(updatePassword), ctx) {
+	if utils.IsErrorEmpty(ctx.ShouldBindJSON(updatePassword), ctx) {
 		if updatePassword.UserName == "" || updatePassword.Password == "" ||
 			updatePassword.OldPassword == "" {
-			web.ParamMissResponseOperation(ctx)
+			utils.ParamMissResponseOperation(ctx)
 			return
 		}
-		web.operateResponse(nil, u.CommonService.UpdatePassword(&entry.User{Name: updatePassword.UserName,
+		utils.OperateResponse(nil, u.CommonService.UpdatePassword(&entry.User{Name: updatePassword.UserName,
 			Password: updatePassword.Password}, updatePassword.OldPassword), ctx)
 	}
 }

@@ -60,6 +60,10 @@ func (d *registryService) ListRegistryByUser(userId int64) ([]entry.Registry, er
 	return result, err
 }
 
+type ReferenceService interface {
+
+}
+
 type MethodService interface {
 	AddMethod(method *vo.Method) error
 	GetMethodDetail(methodId int64) (*vo.Method, error)

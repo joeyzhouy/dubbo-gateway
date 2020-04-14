@@ -2,6 +2,7 @@ package router
 
 import (
 	"dubbo-gateway/common/extension"
+	"dubbo-gateway/router/cache"
 	"fmt"
 	"github.com/gin-gonic/gin"
 )
@@ -14,13 +15,9 @@ func init() {
 	r = gin.New()
 	r.Use(extension.LoggerWithWriter(), gin.Recovery())
 	routerConfig = extension.GetRouterConfig()
-	r.GET(routerConfig.Config.Prefix, operate)
+	r.Any(routerConfig.Config.Prefix, cache.Operate)
 }
 
 func Run() error {
 	return r.Run(fmt.Sprintf(":%d", routerConfig.Config.Port))
-}
-
-func operate(ctx *gin.Context) {
-
 }
