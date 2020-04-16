@@ -3,13 +3,12 @@ package registry
 import "dubbo-gateway/common/extension"
 
 type Registry interface {
+	RegisterTempNode(node extension.Node) error
 
-	Registry(extension.Node) error
+	Subscribe(path string, listener NotifyListener) error
 
-	Subscribe(extension.Node, NotifyListener)
+	ListNodeByPath(path string) ([]extension.Node, error)
 }
 
-type NotifyListener interface {
-	Notify(event *Event)
-}
+type NotifyListener func(*Event)
 

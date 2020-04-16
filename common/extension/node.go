@@ -1,6 +1,12 @@
 package extension
 
+import "fmt"
+
 type Node struct {
-	Root string
-	Path string
+	IP   string
+	Port int
+}
+
+func (n *Node) String() string {
+	return fmt.Sprintf("%s:%d", n.IP, n.Port)
 }

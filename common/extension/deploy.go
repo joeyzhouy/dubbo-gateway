@@ -14,6 +14,7 @@ type Deploy struct {
 		Model    string `yaml:"model"`
 		Multiple struct {
 			Port         int `yaml:"port"`
+			Retry        int `yaml:"retry"`
 			Coordination struct {
 				Protocol string        `yaml:"protocol"`
 				Timeout  time.Duration `yaml:"timeout"`

@@ -15,6 +15,7 @@ type RegisterService interface {
 	DeleteRegistryConfig(registryId, userId int64) error
 	ListRegistryByUser(userId int64) ([]entry.Registry, error)
 	RegisterDetail(userId, registerId int64) (*entry.Registry, error)
+	ListAll() ([]entry.Registry, error)
 }
 
 func NewRegistryService() RegisterService {
@@ -23,6 +24,12 @@ func NewRegistryService() RegisterService {
 
 type registryService struct {
 	*gorm.DB
+}
+
+func (d *registryService) ListAll() ([]entry.Registry, error) {
+	result := make([]entry.Registry, 0)
+	err := d.Where("is_delete = 0").Find(&result).Error
+	return result, err
 }
 
 func (d *registryService) RegisterDetail(userId, registerId int64) (*entry.Registry, error) {
@@ -61,7 +68,55 @@ func (d *registryService) ListRegistryByUser(userId int64) ([]entry.Registry, er
 }
 
 type ReferenceService interface {
+	AddReference(reference entry.Reference) error
+	DeleteReference(id int64) error
+	ListAll() ([]entry.Reference, error)
+	ListByUser(userId int64) ([]entry.Reference, error)
+	GetByIds(ids []int64) ([]entry.Reference, error)
+}
 
+type referenceService struct {
+	*gorm.DB
+}
+
+func NewReferenceService() ReferenceService {
+	return &referenceService{}
+}
+
+func (r *referenceService) GetByIds(ids []int64) ([]entry.Reference, error) {
+	result := make([]entry.Reference, 0)
+	if len(ids) == 0 {
+		return result, nil
+	}
+	err := r.Where("id IN (?)", &ids).Find(&result).Error
+	return result, err
+}
+
+func (r *referenceService) ListByUser(userId int64) ([]entry.Reference, error) {
+	result := make([]entry.Reference, 0)
+	err := r.Where("user_id = ? and is_delete = 0", userId).Find(&result).Error
+	return result, err
+}
+
+func (r *referenceService) AddReference(reference entry.Reference) error {
+	return r.Save(&reference).Error
+}
+
+func (r *referenceService) DeleteReference(id int64) error {
+	var count int
+	if err := r.Model(&entry.Method{}).Where("reference_id = ? and is_delete = 0", id).Count(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return errors.New("must delete method first")
+	}
+	return r.Model(&entry.Reference{}).Where("reference_id = ?", id).UpdateColumn("is_delete", 1).Error
+}
+
+func (r *referenceService) ListAll() ([]entry.Reference, error) {
+	result := make([]entry.Reference, 0)
+	err := r.Where("is_delete = 0").Find(&result).Error
+	return result, err
 }
 
 type MethodService interface {

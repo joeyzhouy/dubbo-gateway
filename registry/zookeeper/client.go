@@ -3,6 +3,8 @@ package zookeeper
 import (
 	"github.com/apache/dubbo-go/common/logger"
 	"github.com/dubbogo/go-zookeeper/zk"
+	perrors "github.com/pkg/errors"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -42,7 +44,6 @@ LOOP:
 			}
 			break LOOP
 		case zk.StateConnected, zk.StateConnecting:
-
 			if arr, ok := z.eventRegistry[e.Path]; ok && len(arr) > 0 {
 				for _, c := range arr {
 					*c <- struct{}{}
@@ -53,17 +54,33 @@ LOOP:
 			case zk.EventNodeChildrenChanged:
 				logger.Infof("zkClient get zk node changed event{path:%s}", e.Path)
 				z.Lock()
-				for p, a := range z.eventRegistry {
-					if strings.HasPrefix(p, e.Path) {
-						for _, e := range a {
-							*e <- struct{}{}
-						}
+				cs, ok := z.eventRegistry[e.Path]
+				if ok {
+					for _, c := range cs {
+						*c <- struct {}{}
 					}
 				}
 				z.Unlock()
 			}
 		}
 	}
+}
+
+func (z *zkClient) CreateBasePath(basePath string) error {
+	var temp string
+	for _, subPath := range strings.Split(basePath, "/") {
+		temp = path.Join(temp, "/", subPath)
+		_, err := z.Conn.Create(temp, []byte(""), 0, zk.WorldACL(zk.PermAll))
+		if err != nil {
+			if err == zk.ErrNodeExists {
+				logger.Infof("zk.create(\"%s\") exists\n", temp)
+			} else {
+				logger.Errorf("zk.create(\"%s\") error(%v)\n", temp, perrors.WithStack(err))
+				return perrors.WithMessagef(err, "zk.Create(path:%s)", basePath)
+			}
+		}
+	}
+	return nil
 }
 
 func (z *zkClient) RegisterEvent(path string, event *chan struct{}) {
@@ -74,8 +91,6 @@ func (z *zkClient) RegisterEvent(path string, event *chan struct{}) {
 	defer z.Unlock()
 	arr := z.eventRegistry[path]
 	arr = append(arr, event)
-
 	z.eventRegistry[path] = arr
 	logger.Debugf("zkClient register event{path:%s, ptr:%p}", path, event)
 }
-

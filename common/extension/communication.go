@@ -2,6 +2,9 @@ package extension
 
 type Mode interface {
 	Start() error
+	Add(apiId int64) error
+	Remove(apiId int64) error
+	Refresh() error
 }
 
 var modes map[string]func(deploy *Deploy) (Mode, error)

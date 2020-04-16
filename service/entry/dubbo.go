@@ -2,6 +2,7 @@ package entry
 
 type Registry struct {
 	Name     string `gorm:"column:name" json:"name"`
+	Timeout  string `gorm:"column:time_out" json:"timeout"`
 	Protocol string `gorm:"column:protocol" json:"protocol"`
 	Address  string `gorm:"column:address" json:"address"`
 	UserName string `gorm:"column:user_name" json:"userName"`

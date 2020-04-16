@@ -19,10 +19,17 @@ type RouterService interface {
 
 	ListAll() ([]*vo.ApiConfigInfo, error)
 	GetByApiId(api int64) (*vo.ApiConfigInfo, error)
+	GetByUri(uri string) (*entry.ApiConfig, error)
 }
 
 type routerService struct {
 	*gorm.DB
+}
+
+func (r *routerService) GetByUri(uri string) (*entry.ApiConfig, error) {
+	result := new(entry.ApiConfig)
+	err := r.Where("uri = ?", uri).Find(&result).Error
+	return result, err
 }
 
 func (r *routerService) GetByApiId(api int64) (*vo.ApiConfigInfo, error) {
