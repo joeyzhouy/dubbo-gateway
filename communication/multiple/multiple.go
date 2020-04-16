@@ -1,6 +1,8 @@
 package multiple
 
 import (
+	"dubbo-gateway/common"
+	"dubbo-gateway/common/config"
 	"dubbo-gateway/common/constant"
 	"dubbo-gateway/common/extension"
 	"dubbo-gateway/common/utils"
@@ -36,6 +38,10 @@ type multipleMode struct {
 	single    extension.Mode
 	retry     int
 	sync.RWMutex
+}
+
+func (m *multipleMode) Close() {
+	//TODO release resource
 }
 
 type kv struct {
@@ -150,7 +156,7 @@ func (m *multipleMode) Refresh() error {
 	}, nil)
 }
 
-func (m *multipleMode) Start() error {
+func (m *multipleMode) Start() {
 	m.authGroup.GET("/add", func(ctx *gin.Context) {
 		if str := ctx.Param("apiId"); str != "" {
 			if apiId, err := strconv.ParseInt(str, 10, 64); utils.IsErrorEmpty(err, ctx) {
@@ -172,17 +178,17 @@ func (m *multipleMode) Start() error {
 	m.authGroup.GET("/refresh", func(ctx *gin.Context) {
 		utils.OperateResponse(nil, m.single.Refresh(), ctx)
 	})
-	return m.r.Run(fmt.Sprintf(":%d", m.port))
+	go m.r.Run(fmt.Sprintf(":%d", m.port))
 }
 
 func init() {
 	extension.SetMode(MultipleMode, newMultipleMode)
 }
 
-func newMultipleMode(deploy *extension.Deploy) (extension.Mode, error) {
+func newMultipleMode(deploy *config.Deploy) (extension.Mode, error) {
 	mode := new(multipleMode)
 	mode.r = gin.New()
-	mode.r.Use(extension.LoggerWithWriter(), gin.Recovery())
+	mode.r.Use(utils.LoggerWithWriter(), gin.Recovery())
 	mode.authGroup = mode.r.Group("/", auth(mode))
 	mConfig := deploy.Config.Multiple
 	mode.port = mConfig.Port
@@ -210,7 +216,7 @@ func newMultipleMode(deploy *extension.Deploy) (extension.Mode, error) {
 		mode.ipList[index] = node.IP
 		mode.ports[index] = node.Port
 	}
-	err = mode.reg.RegisterTempNode(extension.Node{
+	err = mode.reg.RegisterTempNode(common.Node{
 		Port: mode.port,
 		IP:   mode.loc,
 	})

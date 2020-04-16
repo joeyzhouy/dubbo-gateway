@@ -1,6 +1,8 @@
 package zookeeper
 
 import (
+	"dubbo-gateway/common"
+	"dubbo-gateway/common/config"
 	"dubbo-gateway/common/constant"
 	"dubbo-gateway/common/extension"
 	"dubbo-gateway/registry"
@@ -22,19 +24,19 @@ type zkRegistry struct {
 	zLock sync.Mutex
 }
 
-func (z *zkRegistry) ListNodeByPath(path string) ([]extension.Node, error) {
+func (z *zkRegistry) ListNodeByPath(path string) ([]common.Node, error) {
 	children, _, err := z.cli.Conn.Children(path)
 	if err != nil {
 		return nil, err
 	}
-	result := make([]extension.Node, 0, len(children))
+	result := make([]common.Node, 0, len(children))
 	for index, childPath := range children {
 		address := strings.Split(string([]rune(childPath)[strings.LastIndex(childPath, "/")+1:]), ":")
 		port, err := strconv.Atoi(address[1])
 		if err != nil {
 			return nil, err
 		}
-		result[index] = extension.Node{
+		result[index] = common.Node{
 			IP:   address[0],
 			Port: port,
 		}
@@ -42,7 +44,7 @@ func (z *zkRegistry) ListNodeByPath(path string) ([]extension.Node, error) {
 	return result, err
 }
 
-func (z *zkRegistry) RegisterTempNode(node extension.Node) error {
+func (z *zkRegistry) RegisterTempNode(node common.Node) error {
 	z.zLock.Lock()
 	defer z.zLock.Unlock()
 	err := z.cli.CreateBasePath(constant.NodePath)
@@ -68,7 +70,7 @@ func (z *zkRegistry) Subscribe(path string, listener registry.NotifyListener) er
 	}(&ch, listener)
 }
 
-func newZkRegistry(deploy extension.Deploy) (registry.Registry, error) {
+func newZkRegistry(deploy config.Deploy) (registry.Registry, error) {
 	config := deploy.Config.Multiple.Coordination
 	zkAddresses := make([]string, 0)
 	for _, str := range strings.Split(config.Address, ",") {

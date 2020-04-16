@@ -1,23 +1,35 @@
 package router
 
 import (
+	"dubbo-gateway/common/config"
 	"dubbo-gateway/common/extension"
+	"dubbo-gateway/common/utils"
 	"dubbo-gateway/router/cache"
 	"fmt"
 	"github.com/gin-gonic/gin"
 )
 
 var r *gin.Engine
-//var authGroup *gin.RouterGroup
-var routerConfig *extension.RouterConfig
+var routerConfig *config.RouterConfig
 
 func init() {
-	r = gin.New()
-	r.Use(extension.LoggerWithWriter(), gin.Recovery())
-	routerConfig = extension.GetRouterConfig()
-	r.Any(routerConfig.Config.Prefix, cache.Operate)
+	router := new(routerOrigin)
+	router.routerConfig = config.GetRouterConfig()
+	router.r = gin.New()
+	router.r.Use(utils.LoggerWithWriter(), gin.Recovery())
+	router.r.Any(routerConfig.Config.Prefix, cache.Operate)
+	extension.SetOrigin(extension.Router, router)
 }
 
-func Run() error {
-	return r.Run(fmt.Sprintf(":%d", routerConfig.Config.Port))
+type routerOrigin struct {
+	r            *gin.Engine
+	routerConfig *config.RouterConfig
+}
+
+func (r *routerOrigin) Start() {
+	go r.r.Run(fmt.Sprintf(":%d", routerConfig.Config.Port))
+}
+
+func (r *routerOrigin) Close() {
+	cache.Close()
 }

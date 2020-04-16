@@ -1,4 +1,4 @@
-package extension
+package config
 
 import (
 	"dubbo-gateway/common/constant"

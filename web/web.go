@@ -2,7 +2,7 @@ package web
 
 import (
 	"dubbo-gateway/common/constant"
-	"dubbo-gateway/common/extension"
+	"dubbo-gateway/common/utils"
 	"dubbo-gateway/conf"
 	"dubbo-gateway/service/entry"
 	"encoding/json"
@@ -64,7 +64,7 @@ func init() {
 		return
 	}
 	r = gin.New()
-	r.Use(extension.LoggerWithWriter(), gin.Recovery())
+	r.Use(utils.LoggerWithWriter(), gin.Recovery())
 	r.Use(sessions.Sessions("session", store))
 	resourcesPath, err := filepath.Abs("web/resources")
 	if err != nil {

@@ -37,7 +37,11 @@ func init() {
 	rCache.uris = make(map[string]*apiConfigCache, 0)
 	rCache.rMap = make(map[int64]*config.ReferenceConfig, 0)
 	rCache.rUri = make(map[int64][]string)
-	rCache.refresh()
+	err := rCache.refresh()
+	if err != nil {
+		logger.Errorf("router cache refresh error: %v", err)
+		return
+	}
 	requestParamOperate[utils.GET] = func(ctx *gin.Context) (map[string]interface{}, error) {
 		result := make(map[string]interface{})
 		for _, param := range ctx.Params {
@@ -550,4 +554,9 @@ func Add(apiId int64) error {
 
 func Refresh() error {
 	return rCache.refresh()
+}
+
+func Close() {
+	_ = rCache.clear()
+	rCache = nil
 }
