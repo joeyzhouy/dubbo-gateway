@@ -11,7 +11,7 @@ type routerService struct {
 	conn *zk.Conn
 }
 
-func NewRouterService(conn *zk.Conn) service.RouterService {
+func NewRouterService(conn *zk.Conn, event <- chan zk.Event) service.RouterService {
 	return &routerService{conn}
 }
 

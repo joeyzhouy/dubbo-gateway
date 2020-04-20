@@ -1,11 +1,31 @@
 package constant
 
 const (
-	ConfGatewayFilePath = "CONF_GATEWAY_FILE_PATH"
+	ConfGatewayFilePath    = "CONF_GATEWAY_FILE_PATH"
 	DefaultGatewayFilePath = "meta/gateway.yml"
+	DefaultUserName        = "superUser"
 
+	RootPath          = "/gateway"
+	Ids               = "/ids"
+	IdPath            = RootPath + Ids
+	Nodes             = "/nodes"
+	NodePath          = RootPath + Nodes
+	Users             = "/users"
+	UserPath          = RootPath + Users
+	UserInfoPath      = UserPath + "/%d"
+	UserNamePath      = UserPath + "/%s"
+	Registries        = "/registries"
+	RegistryPath      = UserInfoPath + Registries
+	RegistryInfoPath  = RegistryPath + "/%d"
+	References        = "/references"
+	ReferencePath     = References + References
+	ReferenceInfoPath = ReferencePath + "/%d"
+	Methods           = "/methods"
+	MethodPath        = ReferenceInfoPath + Methods
+	MethodInfoOPath   = MethodPath + "/%d"
 
-	RootPath = "/gateway"
-	NodePath = RootPath + "/nodes"
-
+	RegistrySearchRoot  = RootPath + Registries
+	RegistrySearch      = RegistrySearchRoot + "/%d"
+	ReferenceSearchRoot = RootPath + References
+	ReferenceSearch     = ReferenceSearchRoot + "/%d"
 )

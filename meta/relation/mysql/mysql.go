@@ -51,5 +51,6 @@ func NewMetaMysql(configString string) (meta.Meta, error) {
 		mysqlMeta = new(metaMysql)
 		mysqlMeta.db, initError = relation.InitRelationConfig(mysql, configString)
 	})
+	//TODO init mysql tables
 	return mysqlMeta, initError
 }

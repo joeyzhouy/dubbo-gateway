@@ -5,6 +5,7 @@ import (
 	"dubbo-gateway/meta"
 	"dubbo-gateway/service"
 	"dubbo-gateway/service/kv/zookeeper"
+	"github.com/apache/dubbo-go/common/logger"
 	"github.com/dubbogo/go-zookeeper/zk"
 	"gopkg.in/yaml.v2"
 	"strings"
@@ -32,36 +33,64 @@ type zookeeperConfig struct {
 }
 
 type metaZookeeper struct {
-	Conn   *zk.Conn
+	//Conn   *zk.Conn
 	Config *zookeeperConfig
 }
 
+func (z *metaZookeeper) createZkConn() (*zk.Conn, <-chan zk.Event, error) {
+	conn, ch, err := zk.Connect(strings.Split(z.Config.Addresses, ","), z.Config.TimeOut)
+	return conn, ch, err
+}
+
 func (z *metaZookeeper) NewCommonService() service.CommonService {
-	return zookeeper.NewCommonService(z.Conn)
+	if conn, ch, err := z.createZkConn(); err != nil {
+		logger.Errorf("create meta[zookeeper] error: %v", err)
+		return nil
+	} else {
+		return zookeeper.NewCommonService(conn, ch)
+	}
 }
 
 func (z *metaZookeeper) NewRouterService() service.RouterService {
-	return zookeeper.NewRouterService(z.Conn)
+	if conn, ch, err := z.createZkConn(); err != nil {
+		logger.Errorf("create meta[zookeeper] error: %v", err)
+		return nil
+	} else {
+		return zookeeper.NewRouterService(conn, ch)
+	}
 }
 
 func (z *metaZookeeper) NewReferenceService() service.ReferenceService {
-	return zookeeper.NewReferenceService(z.Conn)
+	if conn, ch, err := z.createZkConn(); err != nil {
+		logger.Errorf("create meta[zookeeper] error: %v", err)
+		return nil
+	} else {
+		return zookeeper.NewReferenceService(conn, ch)
+	}
 }
 
 func (z *metaZookeeper) NewRegisterService() service.RegisterService {
-	return zookeeper.NewRegisterService(z.Conn)
+	if conn, ch, err := z.createZkConn(); err != nil {
+		logger.Errorf("create meta[zookeeper] error: %v", err)
+		return nil
+	} else {
+		return zookeeper.NewRegisterService(conn, ch)
+	}
 }
 
 func (z *metaZookeeper) NewMethodService() service.MethodService {
-	return zookeeper.NewMethodService(z.Conn)
+	if conn, ch, err := z.createZkConn(); err != nil {
+		logger.Errorf("create meta[zookeeper] error: %v", err)
+		return nil
+	} else {
+		return zookeeper.NewMethodService(conn, ch)
+	}
 }
 
 func NewZookeeperMeta(configString string) (meta.Meta, error) {
 	once.Do(func() {
 		config := new(zookeeperConfig)
 		initError = yaml.Unmarshal([]byte(configString), config)
-		zkMeta = &metaZookeeper{Config: config}
-		zkMeta.Conn, _, initError = zk.Connect(strings.Split(config.Addresses, ","), config.TimeOut)
 
 	})
 	return zkMeta, initError
