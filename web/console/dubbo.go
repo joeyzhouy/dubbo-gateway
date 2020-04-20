@@ -1,6 +1,7 @@
 package console
 
 import (
+	"dubbo-gateway/common/extension"
 	"dubbo-gateway/common/utils"
 	"dubbo-gateway/service"
 	"dubbo-gateway/service/entry"
@@ -11,8 +12,12 @@ import (
 )
 
 func init() {
-	d := &dubboController{service.NewRegistryService(),
-		service.NewMethodService()}
+	metaDate, err := extension.GetMeta()
+	if err != nil {
+		panic("get meta error")
+	}
+	d := &dubboController{metaDate.NewRegisterService(),
+		metaDate.NewMethodService()}
 	rGroup := web.AuthGroup().Group("/reg")
 	rGroup.GET("/detail", d.GetRegisterDetail)
 	rGroup.GET("/list", d.ListByUser)

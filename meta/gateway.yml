@@ -11,12 +11,17 @@ deploy:
 router:
   port: 8088
   prefix: ""
-dbconfig:
-  db_dialect: mysql
-  db_config: "root:root@(127.0.0.1:3306)/henkel?charset=utf8mb4&parseTime=True&loc=Local"
-  db_maxopen: 100
-  db_maxidle: 10
-  db_maxlifetime: 5
+meta:
+  mysql:
+    db_config: "root:root@(127.0.0.1:3306)/henkel?charset=utf8mb4&parseTime=True&loc=Local"
+    db_maxopen: 100
+    db_maxidle: 10
+    db_maxlifetime: 5
+#  zk:
+#    timeout: "3s"
+#    address: "127.0.0.1:2181"
+#    username: ""
+#    password: ""
 web:
   name: "dobbo-gateway"
   port: 8090

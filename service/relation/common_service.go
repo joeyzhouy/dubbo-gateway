@@ -1,9 +1,9 @@
-package service
+package relation
 
 import (
 	"crypto/hmac"
 	"crypto/sha256"
-	"dubbo-gateway/meta"
+	"dubbo-gateway/service"
 	"dubbo-gateway/service/entry"
 	"encoding/base64"
 	"encoding/hex"
@@ -13,18 +13,12 @@ import (
 
 var UserOrPasswordError = errors.New("username or password error")
 
-type CommonService interface {
-	GetUser(userName, password string) (*entry.User, error)
-	CreateUser(user *entry.User) error
-	UpdatePassword(user *entry.User, oldPassword string) error
-}
-
 type commonService struct {
 	*gorm.DB
 }
 
-func NewCommonService() CommonService {
-	return &commonService{meta.GetDB()}
+func NewCommonService(db *gorm.DB) service.CommonService {
+	return &commonService{db}
 }
 
 func (c *commonService) CreateUser(user *entry.User) error {

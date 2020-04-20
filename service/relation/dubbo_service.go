@@ -1,7 +1,7 @@
-package service
+package relation
 
 import (
-	"dubbo-gateway/meta"
+	"dubbo-gateway/service"
 	"dubbo-gateway/service/entry"
 	"dubbo-gateway/service/vo"
 	"errors"
@@ -10,16 +10,8 @@ import (
 
 var NoRight = errors.New("no right")
 
-type RegisterService interface {
-	AddRegistryConfig(config entry.Registry) error
-	DeleteRegistryConfig(registryId, userId int64) error
-	ListRegistryByUser(userId int64) ([]entry.Registry, error)
-	RegisterDetail(userId, registerId int64) (*entry.Registry, error)
-	ListAll() ([]entry.Registry, error)
-}
-
-func NewRegistryService() RegisterService {
-	return &registryService{meta.GetDB()}
+func NewRegistryService(db *gorm.DB) service.RegisterService {
+	return &registryService{db}
 }
 
 type registryService struct {
@@ -67,20 +59,12 @@ func (d *registryService) ListRegistryByUser(userId int64) ([]entry.Registry, er
 	return result, err
 }
 
-type ReferenceService interface {
-	AddReference(reference entry.Reference) error
-	DeleteReference(id int64) error
-	ListAll() ([]entry.Reference, error)
-	ListByUser(userId int64) ([]entry.Reference, error)
-	GetByIds(ids []int64) ([]entry.Reference, error)
-}
-
 type referenceService struct {
 	*gorm.DB
 }
 
-func NewReferenceService() ReferenceService {
-	return &referenceService{}
+func NewReferenceService(db *gorm.DB) service.ReferenceService {
+	return &referenceService{db}
 }
 
 func (r *referenceService) GetByIds(ids []int64) ([]entry.Reference, error) {
@@ -117,14 +101,6 @@ func (r *referenceService) ListAll() ([]entry.Reference, error) {
 	result := make([]entry.Reference, 0)
 	err := r.Where("is_delete = 0").Find(&result).Error
 	return result, err
-}
-
-type MethodService interface {
-	AddMethod(method *vo.Method) error
-	GetMethodDetail(methodId int64) (*vo.Method, error)
-	DeleteMethod(methodId int64) error
-	GetMethodsByReferenceId(referenceId int64) ([]entry.Method, error)
-	ListByUserIdAndMethodName(userId int64, methodName string) ([]vo.MethodDesc, error)
 }
 
 type methodService struct {
@@ -192,6 +168,6 @@ func (m *methodService) GetMethodsByReferenceId(referenceId int64) ([]entry.Meth
 	return result, nil
 }
 
-func NewMethodService() MethodService {
-	return &methodService{meta.GetDB()}
+func NewMethodService(db *gorm.DB) service.MethodService {
+	return &methodService{db}
 }

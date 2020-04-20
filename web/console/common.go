@@ -1,6 +1,7 @@
 package console
 
 import (
+	"dubbo-gateway/common/extension"
 	"dubbo-gateway/common/utils"
 	"dubbo-gateway/service"
 	"dubbo-gateway/service/entry"
@@ -9,7 +10,11 @@ import (
 )
 
 func init() {
-	u := &userController{service.NewCommonService()}
+	metaData, err := extension.GetMeta()
+	if err != nil {
+		panic("get meta error")
+	}
+	u := &userController{metaData.NewCommonService()}
 	uGroup := web.AuthGroup().Group("u")
 	uGroup.POST("/login", u.Login)
 	uGroup.POST("/", u.CreateUser)

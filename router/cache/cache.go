@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"dubbo-gateway/common/extension"
 	"dubbo-gateway/common/utils"
 	"dubbo-gateway/service"
 	"dubbo-gateway/service/entry"
@@ -32,13 +33,17 @@ var requestParamOperate map[string]func(*gin.Context) (map[string]interface{}, e
 
 func init() {
 	rCache = new(routerCache)
-	rCache.RouterService = service.NewRouterService()
-	rCache.ReferenceService = service.NewReferenceService()
-	rCache.RegisterService = service.NewRegistryService()
+	metaData, err := extension.GetMeta()
+	if err != nil {
+		panic("get meta error")
+	}
+	rCache.RouterService = metaData.NewRouterService()
+	rCache.ReferenceService = metaData.NewReferenceService()
+	rCache.RegisterService = metaData.NewRegisterService()
 	rCache.uris = make(map[string]*apiConfigCache, 0)
 	rCache.rMap = make(map[int64]*config.ReferenceConfig, 0)
 	rCache.rUri = make(map[int64][]string)
-	err := rCache.refresh()
+	err = rCache.refresh()
 	if err != nil {
 		logger.Errorf("router cache refresh error: %v", err)
 		return

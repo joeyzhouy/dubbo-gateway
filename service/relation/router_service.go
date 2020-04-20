@@ -1,8 +1,7 @@
-package service
+package relation
 
 import (
 	"crypto/md5"
-	"dubbo-gateway/meta"
 	"dubbo-gateway/service/entry"
 	"dubbo-gateway/service/vo"
 	"encoding/hex"
@@ -176,8 +175,8 @@ func (r *routerService) ListRouterByUserId(userId int64) ([]entry.ApiConfig, err
 	return result, err
 }
 
-func NewRouterService() RouterService {
-	return &routerService{meta.GetDB()}
+func NewRouterService(db *gorm.DB) RouterService {
+	return &routerService{db}
 }
 
 func hash(str string) string {

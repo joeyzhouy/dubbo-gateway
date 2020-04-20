@@ -18,7 +18,11 @@ func init() {
 		logger.Errorf("get config mode error: %v", perrors.WithStack(err))
 		return
 	}
-	r := &routerController{service.NewRouterService(), mode}
+	metaDate, err := extension.GetMeta()
+	if err != nil {
+		panic("get meta error")
+	}
+	r := &routerController{metaDate.NewRouterService(), mode}
 	rGroup := web.AuthGroup().Group("/r")
 	rGroup.POST("/", r.CreateRouter)
 	rGroup.GET("/list", r.ListByUser)
