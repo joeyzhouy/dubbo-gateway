@@ -28,7 +28,7 @@ type DbConfig struct {
 }
 
 func init() {
-	gateWayConfigPath := os.Getenv(constant.CONF_GATEWAY_FILE_PATH)
+	gateWayConfigPath := os.Getenv(constant.ConfGatewayFilePath)
 	if gateWayConfigPath == "" {
 		gateWayConfigPath = DefaultPath
 	}

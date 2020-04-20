@@ -11,6 +11,7 @@ import (
 	"github.com/go-errors/errors"
 	jsoniter "github.com/json-iterator/go"
 	perrors "github.com/pkg/errors"
+	"github.com/tidwall/gjson"
 	"io/ioutil"
 	"net/http"
 	"strconv"
@@ -133,15 +134,33 @@ func (a *apiConfigCache) invoke(param *requestParam) (interface{}, error) {
 		return nil, perrors.Errorf("miss chain config, uri: %s", param.other[requestUri])
 	}
 	var err error
+	var paramClasses []string
+	var bs []byte
+	var resultString string
 	params := []interface{}{param.params}
+
 	for ; chain != nil; chain = chain.next {
+		if paramClasses == nil {
+			paramClasses = chain.paramClass
+		}
 		result, err = chain.referenceConfig.GetRPCService().(*config.GenericService).
-			Invoke([]interface{}{chain.methodName, chain.paramClass, []interface{}{params}})
+			Invoke([]interface{}{chain.methodName, paramClasses, params})
 		if err != nil {
 			return nil, err
 		}
-		if chain.rules != nil && len(chain.rules) > 0 {
-			// change params
+		if chain.rules == nil || len(chain.rules) == 0 {
+			break
+		}
+		params = make([]interface{}, 0)
+		paramClasses = make([]string, 0)
+		bs, err = jsoniter.Marshal(result)
+		if err != nil {
+			break
+		}
+		resultString = string(bs)
+		for _, rule := range chain.rules {
+			paramClasses = append(paramClasses, rule.rule.JavaClass)
+			params = append(params, gjson.Get(resultString, rule.rule.Rule).String())
 		}
 	}
 	return result, err

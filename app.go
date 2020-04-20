@@ -2,7 +2,10 @@ package main
 
 import (
 	"dubbo-gateway/common/extension"
+	//_ "dubbo-gateway/communication"
 	_ "dubbo-gateway/meta"
+	//_ "dubbo-gateway/router"
+	_ "dubbo-gateway/web"
 	"github.com/apache/dubbo-go/common/logger"
 	"os"
 	"os/signal"

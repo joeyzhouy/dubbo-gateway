@@ -6,7 +6,7 @@ type ApiConfig struct {
 	Desc     string `gorm:"column:desc" json:"desc"`
 	Uri      string `gorm:"column:uri" json:"uri"`
 	UriHash  string `gorm:"column:uri_hash" json:"uriHash"`
-	FilterId int64  `gorm:"column:filter_id" json:"fiterId"`
+	FilterId int64  `gorm:"column:filter_id" json:"filterId"`
 }
 
 func (ApiConfig) TableName() string {
