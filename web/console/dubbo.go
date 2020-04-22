@@ -29,7 +29,7 @@ func init() {
 	mGroup.GET("/", d.GetMethodDetail)
 	mGroup.DELETE("/", d.DeleteMethod)
 	mGroup.GET("/r", d.GetMethodsByReference)
-	mGroup.GET("/u", d.ListByUserIdAndMethodName)
+	//mGroup.GET("/u", d.ListByUserIdAndMethodName)
 }
 
 type dubboController struct {
@@ -127,13 +127,13 @@ func (d *dubboController) GetMethodsByReference(ctx *gin.Context) {
 	}
 }
 
-func (d *dubboController) ListByUserIdAndMethodName(ctx *gin.Context) {
-	if methodName, ok := ctx.GetQuery("methodName"); ok {
-		if user, err := web.GetSessionUser(ctx); utils.IsErrorEmpty(err, ctx) {
-			result, err := d.MethodService.ListByUserIdAndMethodName(user.ID, methodName)
-			utils.OperateResponse(result, err, ctx)
-		}
-	} else {
-		utils.ParamMissResponseOperation(ctx)
-	}
-}
+//func (d *dubboController) ListByUserIdAndMethodName(ctx *gin.Context) {
+//	if methodName, ok := ctx.GetQuery("methodName"); ok {
+//		if user, err := web.GetSessionUser(ctx); utils.IsErrorEmpty(err, ctx) {
+//			result, err := d.MethodService.ListByUserIdAndMethodName(user.ID, methodName)
+//			utils.OperateResponse(result, err, ctx)
+//		}
+//	} else {
+//		utils.ParamMissResponseOperation(ctx)
+//	}
+//}

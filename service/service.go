@@ -32,7 +32,7 @@ type MethodService interface {
 	GetMethodDetail(methodId int64) (*vo.Method, error)
 	DeleteMethod(methodId int64) error
 	GetMethodsByReferenceId(referenceId int64) ([]entry.Method, error)
-	ListByUserIdAndMethodName(userId int64, methodName string) ([]vo.MethodDesc, error)
+	//ListByUserIdAndMethodName(userId int64, methodName string) ([]vo.MethodDesc, error)
 }
 
 type RouterService interface {
@@ -43,5 +43,5 @@ type RouterService interface {
 
 	ListAll() ([]*vo.ApiConfigInfo, error)
 	GetByApiId(api int64) (*vo.ApiConfigInfo, error)
-	GetByUri(uri string) (*entry.ApiConfig, error)
+	//GetByUri(uri string) (*entry.ApiConfig, error)
 }

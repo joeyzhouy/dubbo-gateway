@@ -18,14 +18,26 @@ const (
 	RegistryPath      = UserInfoPath + Registries
 	RegistryInfoPath  = RegistryPath + "/%d"
 	References        = "/references"
-	ReferencePath     = References + References
+	ReferencePath     = RegistryInfoPath + References
 	ReferenceInfoPath = ReferencePath + "/%d"
 	Methods           = "/methods"
 	MethodPath        = ReferenceInfoPath + Methods
-	MethodInfoOPath   = MethodPath + "/%d"
+	//MethodInfoOPath   = MethodPath + "/%d"
+
+	Api         = "/apis"
+	ApiPath     = UserInfoPath + Api
+	ApiInfoPath = ApiPath + "/%d"
+
+	Filter         = "/filters"
+	FilterPath     = RootPath + Filter
+	FilterInfoPath = FilterPath + "/%d"
 
 	RegistrySearchRoot  = RootPath + Registries
 	RegistrySearch      = RegistrySearchRoot + "/%d"
 	ReferenceSearchRoot = RootPath + References
 	ReferenceSearch     = ReferenceSearchRoot + "/%d"
+	MethodSearchRoot    = RootPath + Methods
+	MethodSearch        = MethodSearchRoot + "/%d"
+	ApiSearchRoot       = RootPath + Api
+	ApiSearchInfo       = ApiSearchRoot + "/%d"
 )

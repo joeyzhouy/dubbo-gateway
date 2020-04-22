@@ -1,35 +1,24 @@
 package relation
 
 import (
-	"crypto/md5"
+	"dubbo-gateway/common/utils"
+	"dubbo-gateway/service"
 	"dubbo-gateway/service/entry"
 	"dubbo-gateway/service/vo"
-	"encoding/hex"
 	"fmt"
 	"github.com/jinzhu/gorm"
 	"strings"
 )
 
-type RouterService interface {
-	AddRouter(api *entry.ApiConfig) error
-	AddApiConfig(api *vo.ApiConfigInfo) error
-	DeleteRouter(apiId int64) error
-	ListRouterByUserId(userId int64) ([]entry.ApiConfig, error)
-
-	ListAll() ([]*vo.ApiConfigInfo, error)
-	GetByApiId(api int64) (*vo.ApiConfigInfo, error)
-	GetByUri(uri string) (*entry.ApiConfig, error)
-}
-
 type routerService struct {
 	*gorm.DB
 }
 
-func (r *routerService) GetByUri(uri string) (*entry.ApiConfig, error) {
-	result := new(entry.ApiConfig)
-	err := r.Where("uri = ?", uri).Find(&result).Error
-	return result, err
-}
+//func (r *routerService) GetByUri(uri string) (*entry.ApiConfig, error) {
+//	result := new(entry.ApiConfig)
+//	err := r.Where("uri = ?", uri).Find(&result).Error
+//	return result, err
+//}
 
 func (r *routerService) GetByApiId(api int64) (*vo.ApiConfigInfo, error) {
 	apiConfig := new(entry.ApiConfig)
@@ -69,7 +58,7 @@ func (r *routerService) join(apiConfigs []entry.ApiConfig, apiFilters []entry.Ap
 		if !ok {
 			temp = make([]vo.ApiChainInfo, 0)
 		}
-		temp = append(temp, vo.ApiChainInfo{ApiChain: chain, Rules: rules[chain.ID]})
+		temp = append(temp, vo.ApiChainInfo{Chain: chain, Rules: rules[chain.ID]})
 		chains[chain.ApiId] = temp
 	}
 	filterMap := make(map[int64]entry.ApiFilter)
@@ -80,7 +69,7 @@ func (r *routerService) join(apiConfigs []entry.ApiConfig, apiFilters []entry.Ap
 	for _, config := range apiConfigs {
 		configInfo := new(vo.ApiConfigInfo)
 		configInfo.ApiConfig = config
-		configInfo.ApiFilter = filterMap[config.FilterId]
+		configInfo.Filter = filterMap[config.FilterId]
 		configInfo.Chains = chains[config.ID]
 		result = append(result, configInfo)
 	}
@@ -108,18 +97,18 @@ func (r *routerService) ListAll() ([]*vo.ApiConfigInfo, error) {
 }
 
 func (r *routerService) AddApiConfig(api *vo.ApiConfigInfo) error {
-	api.UriHash = hash(api.Uri)
+	api.ApiConfig.UriHash = utils.Hash(api.ApiConfig.Uri)
 	tx := r.Begin()
 	if err := tx.Save(&(api.ApiConfig)).Error; err != nil {
 		tx.Rollback()
 		return err
 	}
-	if err := tx.Save(&(api.ApiFilter)).Error; err != nil {
+	if err := tx.Save(&(api.Filter)).Error; err != nil {
 		tx.Rollback()
 		return err
 	}
 	for _, c := range api.Chains {
-		chain := c.ApiChain
+		chain := c.Chain
 		if err := tx.Save(&chain).Error; err != nil {
 			tx.Rollback()
 			return err
@@ -145,7 +134,7 @@ func (r *routerService) AddApiConfig(api *vo.ApiConfigInfo) error {
 }
 
 func (r *routerService) AddRouter(api *entry.ApiConfig) error {
-	api.UriHash = hash(api.Uri)
+	api.UriHash = utils.Hash(api.Uri)
 	return r.Save(api).Error
 }
 
@@ -175,12 +164,6 @@ func (r *routerService) ListRouterByUserId(userId int64) ([]entry.ApiConfig, err
 	return result, err
 }
 
-func NewRouterService(db *gorm.DB) RouterService {
+func NewRouterService(db *gorm.DB) service.RouterService {
 	return &routerService{db}
-}
-
-func hash(str string) string {
-	h := md5.New()
-	h.Write([]byte(str))
-	return hex.EncodeToString(h.Sum(nil))
 }

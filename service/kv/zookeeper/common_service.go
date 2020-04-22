@@ -12,12 +12,14 @@ import (
 	"github.com/dubbogo/go-zookeeper/zk"
 	perrors "github.com/pkg/errors"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 )
 
 var idValue = []byte("id")
 var idg *idGenerator
+var userPathReg = regexp.MustCompile(constant.UserPath + `/(\d+)`)
 
 type commonService struct {
 	conn *zk.Conn
@@ -50,7 +52,7 @@ func (c *commonService) CreateUser(user *entry.User) error {
 
 func NewCommonService(conn *zk.Conn, event <-chan zk.Event) service.CommonService {
 	cs := &commonService{conn}
-	if err := CreateBasePath(constant.UserInfoPath, cs.conn); err != nil {
+	if err := CreateBasePath(constant.UserPath, cs.conn); err != nil {
 		panic("common service init error: " + err.Error())
 	}
 	initIdGenerator(conn, event)
@@ -86,7 +88,7 @@ func (c *commonService) UpdatePassword(user *entry.User, oldPassword string) err
 	if user.Name != constant.DefaultUserName {
 		return constant.UserOrPasswordError
 	}
-	user, stat, err := c.getUser(user.Name, oldPassword)
+	user, _, err := c.getUser(user.Name, oldPassword)
 	if err != nil {
 		return err
 	}
@@ -131,6 +133,26 @@ func next() (int64, error) {
 	return int64(stat.Version), nil
 }
 
+func nextN(n int) ([]int64, error) {
+	requests := make([]interface{}, 0, n)
+	for i := 0; i < n; i++ {
+		requests = append(requests, &zk.SetDataRequest{
+			Data:    idValue,
+			Path:    constant.IdPath,
+			Version: -1,
+		})
+	}
+	results, err := idg.conn.Multi(requests...)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]int64, 0, n)
+	for _, result := range results {
+		ids = append(ids, int64(result.Stat.Version))
+	}
+	return ids, nil
+}
+
 func CreateBasePath(basePath string, conn *zk.Conn) error {
 	var temp string
 	for _, subPath := range strings.Split(basePath, "/") {
@@ -149,27 +171,12 @@ func CreateBasePath(basePath string, conn *zk.Conn) error {
 }
 
 func DeleteAll(basePath string, conn *zk.Conn) error {
-	//children, _, err := conn.Children(basePath)
-	//if err != nil {
-	//	return err
-	//}
-	//if len(children) == 0 {
-	//	return conn.Delete(basePath, -1)
-	//}
-	//for _, child := range children {
-	//	if err = DeleteAll(child, conn); err != nil {
-	//		return err
-	//	}
-	//}
-	//return nil
 	ops, err := deleteOperation(basePath, conn)
 	if err != nil {
 		return err
 	}
 	_, err = conn.Multi(ops)
-	if err != nil {
-		return err
-	}
+	return err
 }
 
 var searchMap = map[string]string{
