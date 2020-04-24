@@ -25,6 +25,7 @@ type ReferenceService interface {
 	ListAll() ([]entry.Reference, error)
 	ListByUser(userId int64) ([]entry.Reference, error)
 	GetByIds(ids []int64) ([]entry.Reference, error)
+	GetReferenceById(id int64) (*vo.Reference, error)
 }
 
 type MethodService interface {
@@ -33,6 +34,15 @@ type MethodService interface {
 	DeleteMethod(methodId int64) error
 	GetMethodsByReferenceId(referenceId int64) ([]entry.Method, error)
 	//ListByUserIdAndMethodName(userId int64, methodName string) ([]vo.MethodDesc, error)
+}
+
+type EntryService interface {
+	SaveEntry(entry *vo.Entry) error
+	UpdateEntry(entry *vo.Entry) error
+	DeleteEntry(id int64) error
+	GetEntry(id int64) (*vo.Entry, error)
+	GetEntries(ids []int64) ([]*vo.Entry, error)
+	GetByType(typeId int) ([]entry.Entry, error)
 }
 
 type RouterService interface {

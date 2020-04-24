@@ -13,10 +13,9 @@ import (
 	"sync"
 )
 
-const Zookeeper = "zookeeper"
 
 func init() {
-	extension.SetRegistry(Zookeeper, newZkRegistry)
+	extension.SetRegistry(constant.ProtocolZookeeper, newZkRegistry)
 }
 
 type zkRegistry struct {
@@ -68,6 +67,7 @@ func (z *zkRegistry) Subscribe(path string, listener registry.NotifyListener) er
 			listener(&registry.Event{Path: path, Action: registry.EventChildrenChange})
 		}
 	}(&ch, listener)
+	return nil
 }
 
 func newZkRegistry(deploy config.Deploy) (registry.Registry, error) {

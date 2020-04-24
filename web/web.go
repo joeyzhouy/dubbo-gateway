@@ -1,7 +1,9 @@
 package web
 
 import (
+	"dubbo-gateway/common/config"
 	"dubbo-gateway/common/constant"
+	"dubbo-gateway/common/extension"
 	"dubbo-gateway/common/utils"
 	"dubbo-gateway/conf"
 	"dubbo-gateway/service/entry"
@@ -16,35 +18,36 @@ import (
 	"gopkg.in/yaml.v2"
 	"net/http"
 	"path/filepath"
+	"strings"
 )
 
 const (
-	COOKIE = "cookie"
-	REDIS  = "redis"
-
-	SessionUser = "_user"
+	COOKIE        = "cookie"
+	REDIS         = "redis"
+	consoleOrigin = "console"
+	SessionUser   = "_user"
 )
 
-type WebConfig struct {
-	Name   string `yaml:"name"`
-	Port   int    `yaml:"port"`
-	Config struct {
-		Session struct {
-			Type    string `yaml:"type"`
-			Timeout int    `yaml:"time_out"`
-			Redis   struct {
-				Network  string `yaml:"network"`
-				Address  string `yaml:"address"`
-				Password string `yaml:"password"`
-				DB       int    `yaml:"db"`
-			}
-		} `yaml:"session"`
-	} `yaml:"web"`
+var con *console
+var ignoreUrlMap = make(map[string]string, 0)
+
+type console struct {
+	r         *gin.Engine
+	authGroup *gin.RouterGroup
+	webConfig *config.WebConfig
 }
 
-var r *gin.Engine
-var authGroup *gin.RouterGroup
-var webConfig *WebConfig
+func (c *console) Start() {
+	logger.Infof("console start port: %d", c.webConfig.Config.Port)
+	err := c.r.Run(fmt.Sprintf(":%d", c.webConfig.Config.Port))
+	if err != nil {
+		logger.Errorf("start console error: %v", perrors.WithStack(err))
+	}
+	return
+}
+
+func (*console) Close() {
+}
 
 func init() {
 	confStr, err := conf.GetConfig(constant.ConfGatewayFilePath, constant.DefaultGatewayFilePath)
@@ -52,7 +55,7 @@ func init() {
 		logger.Errorf("get config error: %v", perrors.WithStack(err))
 		return
 	}
-	webConfig := new(WebConfig)
+	webConfig := new(config.WebConfig)
 	err = yaml.Unmarshal([]byte(confStr), webConfig)
 	if err != nil {
 		logger.Errorf("yaml.Unmarshal() = error:%v", perrors.WithStack(err))
@@ -63,42 +66,48 @@ func init() {
 		logger.Errorf("init session store error: %v", perrors.WithStack(err))
 		return
 	}
-	r = gin.New()
-	r.Use(utils.LoggerWithWriter(), gin.Recovery())
-	r.Use(sessions.Sessions("session", store))
+	con = new(console)
+	con.webConfig = webConfig
+	con.r = gin.New()
+	con.r.Use(utils.LoggerWithWriter(), gin.Recovery())
+	con.r.Use(sessions.Sessions("session", store))
 	resourcesPath, err := filepath.Abs("web/resources")
 	if err != nil {
 		logger.Errorf("init static resource  error: %v", perrors.WithStack(err))
 		return
 	}
-	r.StaticFS("/static", http.Dir(resourcesPath+"/static"))
-	r.StaticFile("/seltek.ico", resourcesPath+"/static/seltek.ico")
-	r.StaticFile("/index.htm", resourcesPath+"/index.htm")
-	r.StaticFile("/", resourcesPath+"/index.html")
-	authGroup = r.Group("/", Auth())
+	con.r.StaticFS("/static", http.Dir(resourcesPath+"/static"))
+	con.r.StaticFile("/seltek.ico", resourcesPath+"/static/seltek.ico")
+	con.r.StaticFile("/index.htm", resourcesPath+"/index.htm")
+	con.r.StaticFile("/", resourcesPath+"/index.html")
+	con.authGroup = con.r.Group("/", Auth())
+	extension.SetOrigin(consoleOrigin, con)
 }
 
-func GetEngine() *gin.Engine {
-	return r
+func RegisterIgnoreUri(uri, method string) {
+	if methods, ok := ignoreUrlMap[uri]; ok {
+		ignoreUrlMap[uri] = methods + "|" + method
+	} else {
+		ignoreUrlMap[uri] = method
+	}
 }
 
 func AuthGroup() *gin.RouterGroup {
-	return authGroup
-}
-
-func Run() error {
-	return r.Run(fmt.Sprintf(":%d", webConfig.Port))
+	return con.authGroup
 }
 
 func Auth() gin.HandlerFunc {
 	result := make(map[string]interface{})
 	result["code"] = 403
 	return func(ctx *gin.Context) {
-		session := sessions.Default(ctx)
-		user := session.Get(SessionUser)
-		if user == nil {
-			ctx.AbortWithStatusJSON(200, &result)
-			return
+		uri := ctx.Request.RequestURI
+		if methods, ok := ignoreUrlMap[uri]; ok && !strings.Contains(methods, ctx.Request.Method) || !ok {
+			session := sessions.Default(ctx)
+			user := session.Get(SessionUser)
+			if user == nil {
+				ctx.AbortWithStatusJSON(200, &result)
+				return
+			}
 		}
 		ctx.Next()
 	}
@@ -124,7 +133,7 @@ func GetSessionUser(ctx *gin.Context) (*entry.User, error) {
 	return user, nil
 }
 
-func getSessionStore(config WebConfig) (sessions.Store, error) {
+func getSessionStore(config config.WebConfig) (sessions.Store, error) {
 	switch config.Config.Session.Type {
 	case COOKIE:
 		return cookie.NewStore([]byte("secret")), nil

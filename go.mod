@@ -3,6 +3,7 @@ module dubbo-gateway
 go 1.13
 
 require (
+	github.com/Workiva/go-datastructures v1.0.50
 	github.com/apache/dubbo-go v1.3.0
 	github.com/dubbogo/go-zookeeper v1.0.0
 	github.com/gin-contrib/sessions v0.0.3

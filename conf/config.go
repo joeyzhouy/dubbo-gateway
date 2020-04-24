@@ -31,3 +31,4 @@ func GetConfig(envName, defaultPath string) (string, error) {
 	result, _ := confMap.LoadOrStore(envName, string(confFileStream))
 	return result.(string), nil
 }
+

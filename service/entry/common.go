@@ -2,7 +2,7 @@ package entry
 
 type User struct {
 	Base
-	Name     string `gorm:"column:name" json:"name"`
+	Name     string `gorm:"column:name" json:"userName"`
 	Email    string `gorm:"column:email" json:"email"`
 	Password string `gorm:"column:password" json:"password"`
 }

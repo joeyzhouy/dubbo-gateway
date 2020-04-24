@@ -10,7 +10,7 @@ type Mode interface {
 	Close()
 }
 
-var modes map[string]func(deploy *config.Deploy) (Mode, error)
+var modes = make(map[string]func(deploy *config.Deploy) (Mode, error))
 
 func GetMode(mode string) (Mode, error) {
 	if modes[mode] == nil {

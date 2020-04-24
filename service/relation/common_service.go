@@ -32,7 +32,7 @@ func (c *commonService) UpdatePassword(user *entry.User, oldPassword string) err
 
 func (c *commonService) GetUser(userName, password string) (*entry.User, error) {
 	user := new(entry.User)
-	err := c.Where("name = ? and password = ?", userName, password).Find(user).Error
+	err := c.Where("name = ? and password = ?", userName, utils.Sha256(password, userName)).Find(user).Error
 	if err != nil && err == gorm.ErrRecordNotFound {
 		return nil, constant.UserOrPasswordError
 	}

@@ -40,4 +40,7 @@ const (
 	MethodSearch        = MethodSearchRoot + "/%d"
 	ApiSearchRoot       = RootPath + Api
 	ApiSearchInfo       = ApiSearchRoot + "/%d"
+
+	ProtocolZookeeper = "zookeeper"
+	ProtocolDubbo = "dubbo"
 )

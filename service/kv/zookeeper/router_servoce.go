@@ -16,7 +16,14 @@ type routerService struct {
 }
 
 func NewRouterService(conn *zk.Conn, event <-chan zk.Event) service.RouterService {
-	return &routerService{conn}
+	rs := &routerService{conn}
+	if err := CreateBasePath(constant.FilterPath, rs.conn); err != nil {
+		panic("router service init error: " + err.Error())
+	}
+	if err := CreateBasePath(constant.ApiSearchRoot, rs.conn); err != nil {
+		panic("router service init error: " + err.Error())
+	}
+	return rs
 }
 
 func (r *routerService) AddRouter(api *entry.ApiConfig) error {

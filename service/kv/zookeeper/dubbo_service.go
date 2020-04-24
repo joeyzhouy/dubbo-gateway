@@ -10,6 +10,7 @@ import (
 	"github.com/dubbogo/go-zookeeper/zk"
 	perrors "github.com/pkg/errors"
 	"regexp"
+	"strconv"
 	"time"
 )
 
@@ -49,8 +50,12 @@ func (r *registerService) AddRegistryConfig(config entry.Registry) error {
 		Data:  []byte(nodePath),
 		Flags: 0,
 		Acl:   zk.WorldACL(zk.PermAll),
+	}, zk.CreateRequest{
+		Path:  nodePath + constant.Registries,
+		Data:  emptyValue,
+		Flags: 0,
+		Acl:   zk.WorldACL(zk.PermAll),
 	})
-	//_, err = r.conn.Create(nodePath, bs, 0, zk.WorldACL(zk.PermAll))
 	return err
 }
 
@@ -117,6 +122,10 @@ type referenceService struct {
 	conn *zk.Conn
 }
 
+func (r *referenceService) GetReferenceById(id int64) (*vo.Reference, error) {
+	return nil, nil
+}
+
 func NewReferenceService(conn *zk.Conn, event <-chan zk.Event) service.ReferenceService {
 	reference := &referenceService{conn}
 	if err := CreateBasePath(constant.ReferenceSearchRoot, reference.conn); err != nil {
@@ -126,7 +135,6 @@ func NewReferenceService(conn *zk.Conn, event <-chan zk.Event) service.Reference
 }
 
 func (r *referenceService) AddReference(reference entry.Reference) error {
-
 	bs, _, err := r.conn.Get(fmt.Sprintf(constant.RegistrySearch, reference.RegistryId))
 	if err != nil {
 		return err
@@ -139,8 +147,12 @@ func (r *referenceService) AddReference(reference entry.Reference) error {
 	if err != nil {
 		return err
 	}
+	userId, err := strconv.ParseInt(temps[0], 10, 64)
+	if err != nil {
+		return err
+	}
 	reference.ID = id
-	nodePath := fmt.Sprintf(constant.ReferenceInfoPath, temps[0], reference.RegistryId, id)
+	nodePath := fmt.Sprintf(constant.ReferenceInfoPath, userId, reference.RegistryId, id)
 	bs, err = json.Marshal(&reference)
 	if err != nil {
 		return err
@@ -153,6 +165,11 @@ func (r *referenceService) AddReference(reference entry.Reference) error {
 	}, &zk.CreateRequest{
 		Path:  fmt.Sprintf(constant.RegistrySearch, reference.ID),
 		Data:  []byte(nodePath),
+		Flags: 0,
+		Acl:   zk.WorldACL(zk.PermAll),
+	}, &zk.CreateRequest{
+		Path:  nodePath + constant.Methods,
+		Data:  emptyValue,
 		Flags: 0,
 		Acl:   zk.WorldACL(zk.PermAll),
 	})

@@ -2,9 +2,9 @@ package config
 
 
 type WebConfig struct {
-	Name   string `yaml:"name"`
-	Port   int    `yaml:"port"`
-	Config struct {
+	Config struct{
+		Name   string `yaml:"name"`
+		Port   int    `yaml:"port"`
 		Session struct {
 			Type    string `yaml:"type"`
 			Timeout int    `yaml:"time_out"`

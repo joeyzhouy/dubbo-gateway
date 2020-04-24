@@ -37,7 +37,7 @@ func (d *registryService) RegisterDetail(userId, registerId int64) (*entry.Regis
 }
 
 func (d *registryService) AddRegistryConfig(config entry.Registry) error {
-	return d.Save(config).Error
+	return d.Save(&config).Error
 }
 
 func (d *registryService) DeleteRegistryConfig(registryId, userId int64) error {
@@ -50,7 +50,7 @@ func (d *registryService) DeleteRegistryConfig(registryId, userId int64) error {
 		}
 		return err
 	}
-	return d.Where("id = ?", registryId).UpdateColumn("is_delete", 1).Error
+	return d.Where("id = ?", registryId).Delete(entry.Registry{}).Error
 }
 
 func (d *registryService) ListRegistryByUser(userId int64) ([]entry.Registry, error) {
@@ -61,6 +61,31 @@ func (d *registryService) ListRegistryByUser(userId int64) ([]entry.Registry, er
 
 type referenceService struct {
 	*gorm.DB
+}
+
+func (r *referenceService) GetReferenceById(id int64) (*vo.Reference, error) {
+	result := new(vo.Reference)
+	err := r.Where("id = ?", id).Find(result).Error
+	if err != nil {
+		return nil, err
+	}
+	methods := make([]vo.Method, 0)
+	if err := r.Where("reference_id = ?", id).Find(&methods).Error; err != nil {
+		return nil, err
+	}
+	if len(methods) > 0 {
+		ms := make([]vo.Method, 0, len(methods))
+		params := make([]entry.MethodParam, 0)
+		for _, method := range methods {
+			if err = r.Where("method_id = ?", method.ID).Order("seq").Find(&params).Error; err != nil {
+				return nil, err
+			}
+			method.Params = params
+			ms = append(ms, method)
+		}
+		result.Methods = ms
+	}
+	return result, nil
 }
 
 func NewReferenceService(db *gorm.DB) service.ReferenceService {
@@ -94,7 +119,7 @@ func (r *referenceService) DeleteReference(id int64) error {
 	if count > 0 {
 		return errors.New("must delete method first")
 	}
-	return r.Model(&entry.Reference{}).Where("reference_id = ?", id).UpdateColumn("is_delete", 1).Error
+	return r.Where("id = ?", id).Delete(entry.Reference{}).Error
 }
 
 func (r *referenceService) ListAll() ([]entry.Reference, error) {

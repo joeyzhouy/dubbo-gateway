@@ -18,6 +18,7 @@ import (
 )
 
 var idValue = []byte("id")
+var emptyValue = []byte("1")
 var idg *idGenerator
 var userPathReg = regexp.MustCompile(constant.UserPath + `/(\d+)`)
 
@@ -36,14 +37,25 @@ func (c *commonService) CreateUser(user *entry.User) error {
 	if err != nil {
 		return err
 	}
+	userInfoPath := fmt.Sprintf(constant.UserInfoPath, user.ID)
 	_, err = c.conn.Multi(&zk.CreateRequest{
-		Path:  fmt.Sprintf(constant.UserInfoPath, user.ID),
+		Path:  userInfoPath,
 		Data:  bs,
 		Flags: 0,
 		Acl:   zk.WorldACL(zk.PermAll),
 	}, &zk.CreateRequest{
 		Path:  fmt.Sprintf(constant.UserNamePath, user.Name),
-		Data:  Int64ToBytes(user.ID),
+		Data:  []byte(userInfoPath),
+		Flags: 0,
+		Acl:   zk.WorldACL(zk.PermAll),
+	}, &zk.CreateRequest{
+		Path:  userInfoPath + constant.Registries,
+		Data:  emptyValue,
+		Flags: 0,
+		Acl:   zk.WorldACL(zk.PermAll),
+	}, &zk.CreateRequest{
+		Path:  userInfoPath + constant.Api,
+		Data:  emptyValue,
 		Flags: 0,
 		Acl:   zk.WorldACL(zk.PermAll),
 	})
@@ -60,7 +72,6 @@ func NewCommonService(conn *zk.Conn, event <-chan zk.Event) service.CommonServic
 }
 
 func (c *commonService) GetUser(userName, password string) (*entry.User, error) {
-
 	if userName != constant.DefaultUserName {
 		return nil, constant.UserOrPasswordError
 	}

@@ -7,18 +7,17 @@ import (
 	"dubbo-gateway/service/entry"
 	"dubbo-gateway/web"
 	"github.com/gin-gonic/gin"
+	"net/http"
 )
 
 func init() {
-	metaData, err := extension.GetMeta()
-	if err != nil {
-		panic("get meta error")
-	}
-	u := &userController{metaData.NewCommonService()}
+	u := &userController{extension.GetMeta().NewCommonService()}
 	uGroup := web.AuthGroup().Group("u")
 	uGroup.POST("/login", u.Login)
+	uGroup.GET("/", u.getCurrentUser)
 	uGroup.POST("/", u.CreateUser)
 	uGroup.PUT("/", u.UpdatePassword)
+	web.RegisterIgnoreUri("/u/login", http.MethodPost)
 }
 
 type userController struct {
@@ -34,8 +33,18 @@ func (u *userController) Login(ctx *gin.Context) {
 		}
 		if dbUser, err := u.GetUser(user.Name, user.Password);
 			utils.IsErrorEmpty(err, ctx) {
-			utils.OperateResponse(nil, web.SaveUser(dbUser, ctx), ctx)
+			if utils.IsErrorEmpty(web.SaveUser(dbUser, ctx), ctx) {
+				dbUser.Password = ""
+				utils.OperateResponse(dbUser, nil, ctx)
+			}
 		}
+	}
+}
+
+func (u *userController) getCurrentUser(ctx *gin.Context) {
+	if user, err := web.GetSessionUser(ctx); utils.IsErrorEmpty(err, ctx) {
+		user.Password = ""
+		utils.OperateResponse(user, nil, ctx)
 	}
 }
 

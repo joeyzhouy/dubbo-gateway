@@ -17,8 +17,7 @@ var metaConfig *MetaConfig
 func init() {
 	metaConfig = new(MetaConfig)
 	configStr, err := conf.GetConfig(constant.ConfGatewayFilePath, constant.DefaultGatewayFilePath)
-	deployConfig = new(Deploy)
-	err = yaml.Unmarshal([]byte(configStr), deployConfig)
+	err = yaml.Unmarshal([]byte(configStr), metaConfig)
 	if err != nil {
 		logger.Errorf("yaml.Unmarshal() = error:%v", perrors.WithStack(err))
 	}

@@ -6,10 +6,11 @@ import (
 	"dubbo-gateway/service"
 	"dubbo-gateway/service/entry"
 	"dubbo-gateway/service/vo"
+	"errors"
+	"fmt"
 	"github.com/apache/dubbo-go/common/logger"
 	"github.com/apache/dubbo-go/config"
 	"github.com/gin-gonic/gin"
-	"github.com/go-errors/errors"
 	jsoniter "github.com/json-iterator/go"
 	perrors "github.com/pkg/errors"
 	"github.com/tidwall/gjson"
@@ -30,40 +31,40 @@ const (
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 var rCache *routerCache
 var requestParamOperate map[string]func(*gin.Context) (map[string]interface{}, error)
+var cacheOnce sync.Once
 
-func init() {
-	rCache = new(routerCache)
-	metaData, err := extension.GetMeta()
-	if err != nil {
-		panic("get meta error")
-	}
-	rCache.RouterService = metaData.NewRouterService()
-	rCache.ReferenceService = metaData.NewReferenceService()
-	rCache.RegisterService = metaData.NewRegisterService()
-	rCache.uris = make(map[string]*apiConfigCache, 0)
-	rCache.rMap = make(map[int64]*config.ReferenceConfig, 0)
-	rCache.rUri = make(map[int64][]string)
-	err = rCache.refresh()
-	if err != nil {
-		logger.Errorf("router cache refresh error: %v", err)
-		return
-	}
-	requestParamOperate[utils.GET] = func(ctx *gin.Context) (map[string]interface{}, error) {
-		result := make(map[string]interface{})
-		for _, param := range ctx.Params {
-			result[param.Key] = param.Value
-		}
-		return result, nil
-	}
-	requestParamOperate[utils.POST] = func(ctx *gin.Context) (map[string]interface{}, error) {
-		result := make(map[string]interface{})
-		data, err := ioutil.ReadAll(ctx.Request.Body)
+func getCache() *routerCache {
+	cacheOnce.Do(func() {
+		rCache = new(routerCache)
+		metaData := extension.GetMeta()
+		rCache.RouterService = metaData.NewRouterService()
+		rCache.ReferenceService = metaData.NewReferenceService()
+		rCache.RegisterService = metaData.NewRegisterService()
+		rCache.uris = make(map[string]*apiConfigCache, 0)
+		rCache.rMap = make(map[int64]*config.ReferenceConfig, 0)
+		rCache.rUri = make(map[int64][]string)
+		err := rCache.refresh()
 		if err != nil {
-			return nil, err
+			panic(fmt.Sprintf("router cache refresh error: %v", perrors.WithStack(err)))
 		}
-		err = json.Unmarshal(data, &result)
-		return result, err
-	}
+		requestParamOperate[utils.GET] = func(ctx *gin.Context) (map[string]interface{}, error) {
+			result := make(map[string]interface{})
+			for _, param := range ctx.Params {
+				result[param.Key] = param.Value
+			}
+			return result, nil
+		}
+		requestParamOperate[utils.POST] = func(ctx *gin.Context) (map[string]interface{}, error) {
+			result := make(map[string]interface{})
+			data, err := ioutil.ReadAll(ctx.Request.Body)
+			if err != nil {
+				return nil, err
+			}
+			err = json.Unmarshal(data, &result)
+			return result, err
+		}
+	})
+	return rCache
 }
 
 type routerCache struct {
@@ -221,12 +222,12 @@ func (r *routerCache) refresh() error {
 	for _, apiConfigInfo := range apiConfigInfos {
 		apiCache := new(apiConfigCache)
 		apiCache.ApiConfigInfo = *apiConfigInfo
-		if apiCache.FilterId != 0 {
-			apiFilter := apiConfigInfo.ApiFilter
+		if apiCache.Filter.ID != 0 {
+			apiFilter := apiConfigInfo.Filter
 			rConfig, ok := referenceMap[apiFilter.ReferenceId]
 			if !ok {
 				//logger.Error("filter: can not found reference with id: %d, in apiConfig uri: %s", apiFilter.ReferenceId, apiCache.Uri)
-				return perrors.Errorf("filter: can not found reference with id: %d, in apiConfig uri: %s", apiFilter.ReferenceId, apiCache.Uri)
+				return perrors.Errorf("filter: can not found reference with id: %d, in apiConfig uri: %s", apiFilter.ReferenceId, apiCache.ApiConfig.Uri)
 			}
 			apiCache.filterReference = &referenceCache{
 				ID:              strconv.FormatInt(apiFilter.ID, 10),
@@ -251,10 +252,10 @@ func (r *routerCache) refresh() error {
 		for index := len(apiConfigInfo.Chains) - 1; index >= 0; index-- {
 			old := origin
 			chain := apiConfigInfo.Chains[index]
-			rConfig, ok := referenceMap[chain.ApiChain.ReferenceId]
+			rConfig, ok := referenceMap[chain.Chain.ReferenceId]
 			if !ok {
 				//logger.Error("chain[first]: can not found reference with id: %d, in apiConfig uri: %s", chain.ApiChain.ReferenceId, apiCache.Uri)
-				return perrors.Errorf("chain[first]: can not found reference with id: %d, in apiConfig uri: %s", chain.ApiChain.ReferenceId, apiCache.Uri)
+				return perrors.Errorf("chain[first]: can not found reference with id: %d, in apiConfig uri: %s", chain.Chain.ReferenceId, apiCache.ApiConfig.Uri)
 			}
 			params := make([]string, 0, len(chain.Params))
 			for _, param := range chain.Params {
@@ -266,9 +267,9 @@ func (r *routerCache) refresh() error {
 			}
 			origin = &referenceChainCache{
 				referenceCache: referenceCache{
-					ID:              strconv.FormatInt(chain.ApiChain.ReferenceId, 10),
-					ReferenceId:     chain.ApiChain.ReferenceId,
-					methodName:      chain.MethodName,
+					ID:              strconv.FormatInt(chain.Chain.ReferenceId, 10),
+					ReferenceId:     chain.Chain.ReferenceId,
+					methodName:      chain.Method.MethodName,
 					keyPrefix:       Chain_prefix,
 					referenceConfig: rConfig,
 					paramClass:      params,
@@ -276,15 +277,15 @@ func (r *routerCache) refresh() error {
 				next:  old,
 				rules: resultRules,
 			}
-			temp, ok := r.rUri[chain.ApiChain.ReferenceId]
+			temp, ok := r.rUri[chain.Chain.ReferenceId]
 			if !ok {
 				temp = make([]string, 0)
 			}
 			temp = append(temp, origin.key())
-			rUri[chain.ApiChain.ReferenceId] = temp
+			rUri[chain.Chain.ReferenceId] = temp
 		}
 		apiCache.chainReferences = origin
-		uris[apiCache.Uri] = apiCache
+		uris[apiCache.ApiConfig.Uri] = apiCache
 		r.uris = uris
 		r.rUri = rUri
 		r.rMap = referenceMap
@@ -368,7 +369,7 @@ func Operate(ctx *gin.Context) {
 		return
 	}
 	requestUri := ctx.Request.RequestURI
-	cache, err := rCache.get(requestUri)
+	cache, err := getCache().get(requestUri)
 	if err != nil {
 		logger.Errorf("get rCache error: %v", perrors.WithStack(err))
 		ctx.AbortWithStatusJSON(200,
@@ -387,7 +388,7 @@ func Operate(ctx *gin.Context) {
 	}
 	result, err := cache.invoke(param)
 	if err != nil {
-		logger.Errorf("invoke error: uri: %s, err: %v", cache.ApiConfigInfo.Uri,
+		logger.Errorf("invoke error: uri: %s, err: %v", cache.ApiConfigInfo.ApiConfig.Uri,
 			perrors.WithStack(err))
 		ctx.AbortWithStatusJSON(200,
 			&utils.Response{Code: utils.Fail, Message: "system error"})
@@ -396,7 +397,7 @@ func Operate(ctx *gin.Context) {
 	bs, err := json.Marshal(result)
 	if err != nil {
 		logger.Errorf("json Unmarshal result error: uri: %s, body: %s, error:%v",
-			cache.ApiConfigInfo.Uri, string(bs), perrors.WithStack(err))
+			cache.ApiConfigInfo.ApiConfig.Uri, string(bs), perrors.WithStack(err))
 		return
 	}
 	ctx.Writer.WriteHeader(200)
@@ -410,10 +411,10 @@ func attachment(ctx *gin.Context) map[string]interface{} {
 }
 
 func RemoveKey(key string) error {
-	rCache.RLock()
-	apiCache, ok := rCache.uris[key]
+	getCache().RLock()
+	apiCache, ok := getCache().uris[key]
 	if !ok {
-		rCache.RUnlock()
+		getCache().RUnlock()
 		logger.Warnf("no config with uri:%s to remove", key)
 		return nil
 	}
@@ -432,11 +433,11 @@ func RemoveKey(key string) error {
 		temp = append(temp, chain.key())
 		removeMap[chain.ReferenceId] = temp
 	}
-	rCache.Lock()
-	defer rCache.Unlock()
+	getCache().Lock()
+	defer getCache().Unlock()
 	removeReference := make([]int64, 0)
 	for key, arr := range removeMap {
-		if old, ok := rCache.rUri[key]; ok {
+		if old, ok := getCache().rUri[key]; ok {
 			for _, removeItem := range arr {
 				var index int
 				for i, item := range old {
@@ -448,75 +449,75 @@ func RemoveKey(key string) error {
 				old = append(old[0:index], old[index+1:]...)
 			}
 			if len(old) == 0 {
-				delete(rCache.rUri, key)
+				delete(getCache().rUri, key)
 				removeReference = append(removeReference, key)
 			}
 		}
 	}
 	if len(removeReference) > 0 {
 		for _, referenceId := range removeReference {
-			delete(rCache.rMap, referenceId)
+			delete(getCache().rMap, referenceId)
 			//TODO resource to release
 		}
 	}
-	delete(rCache.uris, key)
+	delete(getCache().uris, key)
 	return nil
 }
 
 func Remove(apiId int64) error {
-	apiConfigInfo, err := rCache.RouterService.GetByApiId(apiId)
+	apiConfigInfo, err := getCache().RouterService.GetByApiId(apiId)
 	if err != nil {
 		return err
 	}
-	return RemoveKey(apiConfigInfo.Uri)
+	return RemoveKey(apiConfigInfo.ApiConfig.Uri)
 }
 
 func Add(apiId int64) error {
-	apiConfigInfo, err := rCache.RouterService.GetByApiId(apiId)
+	apiConfigInfo, err := getCache().RouterService.GetByApiId(apiId)
 	if err != nil {
 		return err
 	}
 	apiCache := new(apiConfigCache)
 	apiCache.ApiConfigInfo = *apiConfigInfo
 	// refresh registry info
-	if err := rCache.refreshConsumerConfig(); err != nil {
+	if err := getCache().refreshConsumerConfig(); err != nil {
 		return err
 	}
 	// fill reference info
 	referenceIds := make([]int64, 0)
-	if apiCache.FilterId != 0 {
-		if _, ok := rCache.rMap[apiConfigInfo.ApiFilter.ReferenceId]; !ok {
-			referenceIds = append(referenceIds, apiCache.ApiFilter.ReferenceId)
+	if apiCache.Filter.ID != 0 {
+		if _, ok := getCache().rMap[apiConfigInfo.Filter.ReferenceId]; !ok {
+			referenceIds = append(referenceIds, apiCache.Filter.ReferenceId)
 		}
 	}
 	for _, chain := range apiConfigInfo.Chains {
-		if _, ok := rCache.rMap[chain.ApiChain.ReferenceId]; !ok {
-			referenceIds = append(referenceIds, chain.ApiChain.ReferenceId)
+		if _, ok := getCache().rMap[chain.Chain.ReferenceId]; !ok {
+			referenceIds = append(referenceIds, chain.Chain.ReferenceId)
 		}
 	}
 	if len(referenceIds) > 0 {
-		references, err := rCache.ReferenceService.GetByIds(referenceIds)
+		references, err := getCache().ReferenceService.GetByIds(referenceIds)
 		if err != nil {
 			return err
 		}
-		if referenceMap, err := rCache.fillReferenceConfig(references); err != nil {
+		if referenceMap, err := getCache().fillReferenceConfig(references); err != nil {
 			return err
 		} else if len(referenceMap) > 0 {
-			rCache.Lock()
+			getCache().Lock()
 			for key, value := range referenceMap {
-				rCache.rMap[key] = value
+				getCache().rMap[key] = value
 			}
-			rCache.Unlock()
+			getCache().Unlock()
 		}
 	}
 	rUri := make(map[int64][]string, 0)
-	if apiCache.FilterId != 0 {
-		apiFilter := apiConfigInfo.ApiFilter
+	if apiCache.ApiConfig.ID != 0 {
+		apiFilter := apiConfigInfo.Filter
 		apiCache.filterReference = &referenceCache{
 			ID:              strconv.FormatInt(apiFilter.ID, 10),
 			ReferenceId:     apiFilter.ReferenceId,
 			keyPrefix:       Filter_Prefix,
-			referenceConfig: rCache.rMap[apiFilter.ReferenceId],
+			referenceConfig: getCache().rMap[apiFilter.ReferenceId],
 			methodName:      apiFilter.MethodName,
 			paramClass: []string{
 				"java.utils.Map",   //header
@@ -545,42 +546,42 @@ func Add(apiId int64) error {
 		}
 		origin = &referenceChainCache{
 			referenceCache: referenceCache{
-				ID:              strconv.FormatInt(chain.ApiChain.ReferenceId, 10),
-				ReferenceId:     chain.ApiChain.ReferenceId,
-				methodName:      chain.MethodName,
+				ID:              strconv.FormatInt(chain.Chain.ReferenceId, 10),
+				ReferenceId:     chain.Chain.ReferenceId,
+				methodName:      chain.Method.MethodName,
 				keyPrefix:       Chain_prefix,
-				referenceConfig: rCache.rMap[chain.ApiChain.ReferenceId],
+				referenceConfig: getCache().rMap[chain.Chain.ReferenceId],
 				paramClass:      params,
 			},
 			next:  old,
 			rules: resultRules,
 		}
-		temp, ok := rUri[chain.ApiChain.ReferenceId]
+		temp, ok := rUri[chain.Method.ReferenceId]
 		if !ok {
 			temp = make([]string, 0)
 		}
 		temp = append(temp, origin.key())
-		rUri[chain.ApiChain.ReferenceId] = temp
+		rUri[chain.Chain.ReferenceId] = temp
 	}
 	apiCache.chainReferences = origin
-	rCache.Lock()
-	defer rCache.Unlock()
-	rCache.uris[apiCache.Uri] = apiCache
+	getCache().Lock()
+	defer getCache().Unlock()
+	getCache().uris[apiCache.ApiConfig.Uri] = apiCache
 	for key, arr := range rUri {
-		old, ok := rCache.rUri[key]
+		old, ok := getCache().rUri[key]
 		if ok {
 			arr = append(arr, old...)
 		}
-		rCache.rUri[key] = arr
+		getCache().rUri[key] = arr
 	}
 	return nil
 }
 
 func Refresh() error {
-	return rCache.refresh()
+	return getCache().refresh()
 }
 
 func Close() {
-	_ = rCache.clear()
+	_ = getCache().clear()
 	rCache = nil
 }
