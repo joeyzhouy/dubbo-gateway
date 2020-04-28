@@ -3,7 +3,6 @@ package relation
 import (
 	"dubbo-gateway/service"
 	"dubbo-gateway/service/entry"
-	"dubbo-gateway/service/vo"
 	"errors"
 	"fmt"
 	"github.com/apache/dubbo-go/common/logger"
@@ -20,7 +19,7 @@ type entryService struct {
 	*gorm.DB
 }
 
-func (e *entryService) SearchEntries(name string, pageSize int) ([]*vo.Entry, error) {
+func (e *entryService) SearchEntries(name string, pageSize int) ([]*entry.EntryStructure, error) {
 	var ids []int64
 	db := e.Table("d_entry")
 	if name != "" {
@@ -33,7 +32,7 @@ func (e *entryService) SearchEntries(name string, pageSize int) ([]*vo.Entry, er
 		}
 	}
 	if len(ids) == 0 {
-		return make([]*vo.Entry, 0), nil
+		return make([]*entry.EntryStructure, 0), nil
 	}
 	return e.GetEntries(ids)
 }
@@ -84,7 +83,7 @@ func (e *entryService) SaveEntry(es *entry.EntryStructure) error {
 		return err
 	}
 	if length > 0 {
-		if err = e.batchRelation(en.ID, referIds, tx) err != nil {
+		if err = e.batchRelation(en.ID, referIds, tx); err != nil {
 			return err
 		}
 	}
@@ -92,43 +91,44 @@ func (e *entryService) SaveEntry(es *entry.EntryStructure) error {
 	return nil
 }
 
-
-func (e *entryService) UpdateEntry(enVo *vo.Entry) error {
-	var err error
-	en := enVo.Entry
-	en.TypeId = entry.ComplexType
-	en.Structure, err = enVo.GetStructureInfo()
+func (e *entryService) UpdateEntry(es *entry.EntryStructure) error {
+	stStr, err := es.GetStructureInfo()
 	if err != nil {
 		return err
 	}
-	referIds := enVo.GetTopRefIds()
+	referIds := es.GetTopRefIds()
 	referIdsLen := len(referIds)
+	referStr := ""
 	if referIdsLen > 0 {
 		for index, id := range referIds {
-			en.ReferIds = strconv.FormatInt(id, 10)
+			referStr += strconv.FormatInt(id, 10)
 			if index != referIdsLen-1 {
-				en.ReferIds = ","
+				referStr = ","
 			}
 		}
 	}
 	tx := e.Begin()
-	err = tx.Model(&entry.Entry{}).Where("id = ?", en.ID).Updates(map[string]interface{}{
-		"name":      en.Name,
-		"key":       en.Key,
-		"refer_ids": en.ReferIds,
-		"structure": en.Structure,
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+	err = tx.Model(&entry.Entry{}).Where("id = ?", es.Entry.ID).Updates(map[string]interface{}{
+		"name":      es.Entry.Name,
+		"key":       es.Entry.Key,
+		"refer_ids": referStr,
+		"structure": stStr,
 	}).Error
 	if err != nil {
 		tx.Rollback()
 		return err
 	}
-	err = tx.Where("entry_id = ?", en.ID).Delete(entry.EntryRelation{}).Error
+	err = tx.Where("entry_id = ?", es.Entry.ID).Delete(entry.EntryRelation{}).Error
 	if err != nil {
-		tx.Rollback()
 		return err
 	}
 	if referIdsLen > 0 {
-		if err = e.batchRelation(en.ID, referIds, tx); err != nil {
+		if err = e.batchRelation(es.Entry.ID, referIds, tx); err != nil {
 			return err
 		}
 	}
@@ -162,19 +162,18 @@ func (e *entryService) DeleteEntry(id int64) error {
 		return err
 	}
 	tx := e.Begin()
-	err = tx.Delete(entry.EntryRelation{}, "entry_id = ?", id).Error
-	if err != nil {
-		tx.Rollback()
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+	if err = tx.Delete(entry.EntryRelation{}, "entry_id = ?", id).Error; err != nil {
 		return err
 	}
-	err = tx.Delete(entry.Entry{}, "id = ?", id).Error
-	if err != nil {
-		tx.Rollback()
-	}
-	return err
+	return tx.Delete(entry.Entry{}, "id = ?", id).Error
 }
 
-func (e *entryService) GetEntry(id int64) (*vo.Entry, error) {
+func (e *entryService) GetEntry(id int64) (*entry.EntryStructure, error) {
 	entries, err := e.GetEntries([]int64{id})
 	if err != nil {
 		return nil, err
@@ -182,53 +181,64 @@ func (e *entryService) GetEntry(id int64) (*vo.Entry, error) {
 	return entries[0], nil
 }
 
-func (e *entryService) GetEntries(ids []int64) ([]*vo.Entry, error) {
-	result := make([]*vo.Entry, 0)
-	entryMap := make(map[int64]entry.Entry)
-	if err := e.GetAllReferEntryMap(ids, entryMap); err != nil {
-		return nil, err
-	}
-	if bases, err := e.GetByType(entry.BaseType); err != nil {
-		return nil, err
-	} else {
-		for _, base := range bases {
-			entryMap[base.ID] = base
+func (e *entryService) GetEntries(ids []int64) ([]*entry.EntryStructure, error) {
+	result := make([]*entry.EntryStructure, 0)
+	err := e.Where("id IN (?)", &ids).Find(&result).Error
+	for _, es := range result {
+		if err = es.InitStructure(); err != nil {
+			return nil, err
 		}
 	}
-	for _, id := range ids {
-		if en, ok := entryMap[id]; !ok {
-			return nil, errors.New(fmt.Sprintf("miss entry with id: %d", id))
-		} else {
-			voEn := &vo.Entry{Entry: en}
-			if err := voEn.InitStructure(entryMap); err != nil {
-				return nil, err
-			}
-			result = append(result, voEn)
-		}
-	}
-	return result, nil
+	return result, err
 }
 
-func (e *entryService) GetAllReferEntryMap(ids []int64, result map[int64]entry.Entry) error {
-	temp := make([]entry.Entry, 0)
-	err := e.Where("id IN (?)", ids).Find(&temp).Error
-	if err != nil {
-		return err
-	}
-	ids = make([]int64, 0)
-	for _, item := range temp {
-		result[item.ID] = item
-		if item.ReferIds == "" {
-			continue
-		}
-		for _, str := range strings.Split(item.ReferIds, ",") {
-			if id, err := strconv.ParseInt(str, 10, 64); err != nil {
-				ids = append(ids, id)
-			}
-		}
-	}
-	if len(ids) == 0 {
-		return nil
-	}
-	return e.GetAllReferEntryMap(ids, result)
-}
+//func (e *entryService) GetEntries(ids []int64) ([]*vo.Entry, error) {
+//	result := make([]*vo.Entry, 0)
+//	entryMap := make(map[int64]entry.Entry)
+//	if err := e.GetAllReferEntryMap(ids, entryMap); err != nil {
+//		return nil, err
+//	}
+//	if bases, err := e.GetByType(entry.BaseType); err != nil {
+//		return nil, err
+//	} else {
+//		for _, base := range bases {
+//			entryMap[base.ID] = base
+//		}
+//	}
+//	for _, id := range ids {
+//		if en, ok := entryMap[id]; !ok {
+//			return nil, errors.New(fmt.Sprintf("miss entry with id: %d", id))
+//		} else {
+//			voEn := &vo.Entry{Entry: en}
+//			if err := voEn.InitStructure(entryMap); err != nil {
+//				return nil, err
+//			}
+//			result = append(result, voEn)
+//		}
+//	}
+//	return result, nil
+//}
+
+//func (e *entryService) GetAllReferEntryMap(ids []int64, result map[int64]entry.Entry) error {
+//	temp := make([]entry.Entry, 0)
+//	err := e.Where("id IN (?)", ids).Find(&temp).Error
+//	if err != nil {
+//		return err
+//	}
+//	ids = make([]int64, 0)
+//	for _, item := range temp {
+//		result[item.ID] = item
+//		if item.ReferIds == "" {
+//			continue
+//		}
+//		for _, str := range strings.Split(item.ReferIds, ",") {
+//			if id, err := strconv.ParseInt(str, 10, 64); err != nil {
+//				ids = append(ids, id)
+//			}
+//		}
+//	}
+//	if len(ids) == 0 {
+//		return nil
+//	}
+//	return e.GetAllReferEntryMap(ids, result)
+//}

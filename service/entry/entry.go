@@ -142,13 +142,6 @@ func (e *EntryStructure) InitStructure() error {
 	return nil
 }
 
-type MethodParam struct {
-	Base
-	TypeId         int    `gorm:"column:type_id" json:"typeId"`
-	GenericsValues string `gorm:"column:generics_values" json:"genericsValues"`
-	MethodId       int64  `gorm:"column:method_id" json:"methodId"`
-	EntryId        int64  `gorm:"column:entry_id" json:"entryId"`
-}
 
 type GenericsConfig map[string]*Generics
 
@@ -163,58 +156,15 @@ type MethodParamStructure struct {
 	GenericsConfig
 }
 
-func NewMethodParamStructure(param MethodParam, entryMap map[int64]Entry) (*MethodParamStructure, error) {
-	result := new(MethodParamStructure)
-	//result.MethodParam = param
-	//entry := entryMap[param.EntryId]
-	//s, err := NewEntryStructure(entry)
-	//if err != nil {
-	//	return nil, err
-	//}
-	//result.EntryStructure = *s
-	//str := strings.TrimSpace(param.GenericsValues)
-	//if str == "" {
-	//	return result, nil
-	//}
-	//gconfig := new(GenericsConfig)
-	//err = json.Unmarshal([]byte(str), gconfig)
-	//if err != nil {
-	//	return nil, err
-	//}
-	//result.GenericsConfig = *gconfig
-	return result, err
+func (m *MethodParamStructure) InitStructure() error {
+	str := strings.TrimSpace(m.MethodParam.GenericsValues)
+	if str == "" {
+		return nil
+	}
+	gconfig := new(GenericsConfig)
+	if err := json.Unmarshal([]byte(str), gconfig); err != nil {
+		return err
+	}
+	m.GenericsConfig = *gconfig
+	return nil
 }
-
-//func NewEntryStructure(entry Entry) (*EntryStructure, error) {
-//	es := new(EntryStructure)
-//	es.Entry = entry
-//	// BaseType
-//	if es.TypeId != 10 {
-//		return es, nil
-//	}
-//	subStructure := new(Structure)
-//	err := json.Unmarshal([]byte(entry.Structure), subStructure)
-//	if err != nil {
-//		return nil, err
-//	}
-//	for _, field := range *subStructure {
-//		if len(field.GenericsValues) == 0 {
-//			continue
-//		}
-//		ges := make(map[string]int64)
-//		for key, value := range field.GenericsValues {
-//			id, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
-//			if err == nil {
-//				ges[key] = id
-//			}
-//		}
-//		if len(ges) > 0 {
-//			for key, _ := range ges {
-//				delete(field.GenericsValues, key)
-//			}
-//		}
-//		field.GenericsEntry = ges
-//	}
-//	es.Structure = *subStructure
-//	return es, nil
-//}

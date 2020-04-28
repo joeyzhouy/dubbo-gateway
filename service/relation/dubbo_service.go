@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"github.com/jinzhu/gorm"
 	"net/url"
-	"strconv"
 	"strings"
 )
 
@@ -306,37 +305,64 @@ func (m *methodService) GetMethodDetailByIds(methodIds []int64) ([]*vo.Method, e
 }
 
 func (m *methodService) GetMethodDetailByMethods(methods []entry.Method) ([]*vo.Method, error) {
+	var (
+		entryIds  []int64
+		err       error
+		methodIds []int64
+	)
 	result := make([]*vo.Method, 0, len(methods))
-	for i, me := range methods {
-		method := &vo.Method{Method: me}
-		entryIds := make([]int64, 0)
-		if method.MethodResultId > 0 {
-			entryIds = append(entryIds, method.MethodResultId)
+	for _, method := range methods {
+		methodIds = append(methodIds, method.ID)
+	}
+	var params []entry.MethodParam
+	err = m.Where("method_id IN (?)", methodIds).Find(&params).Error
+	if err != nil {
+		return nil, err
+	}
+	paramMap := make(map[int64]map[int64]entry.MethodParam)
+	entryIds = make([]int64, 0)
+	for _, p := range params {
+		temp, ok := paramMap[p.EntryId]
+		if !ok {
+			temp = make(map[int64]entry.MethodParam)
 		}
-		if len(method.MethodParams) > 0 {
-			for _, idStr := range strings.Split(method.MethodParams, ",") {
-				if idStr = strings.TrimSpace(idStr); idStr != "" {
-					if id, err := strconv.ParseInt(idStr, 10, 64); err != nil {
+		temp[p.ID] = p
+		paramMap[p.EntryId] = temp
+		entryIds = append(entryIds, p.EntryId)
+	}
+	entryMap := make(map[int64]*entry.EntryStructure)
+	if len(entryIds) > 0 {
+		if es, err := m.EntryService.GetEntries(entryIds); err != nil {
+			return nil, err
+		} else {
+			for _, e := range es {
+				entryMap[e.Entry.ID] = e
+			}
+		}
+	}
+	for _, method := range methods {
+		ms := &vo.Method{Method: method}
+		if params, ok := paramMap[method.ID]; ok {
+			for _, value := range params {
+				if en, ok := entryMap[value.EntryId]; ok {
+					mp := &entry.MethodParamStructure{
+						MethodParam:    value,
+						EntryStructure: *en,
+					}
+					if err := mp.InitStructure(); err != nil {
 						return nil, err
-					} else {
-						entryIds = append(entryIds, id)
+					}
+					if value.TypeId == entry.MethodEntryResult {
+						ms.Result = mp
+					} else if value.TypeId == entry.MethodEntryParam {
+						if ms.Params == nil {
+							ms.Params = make([]*entry.MethodParamStructure, 0)
+						}
+						ms.Params = append(ms.Params, mp)
 					}
 				}
 			}
 		}
-		if len(entryIds) >= 0 {
-			entries, err := m.EntryService.GetEntries(entryIds)
-			if err != nil {
-				return nil, err
-			}
-			index := 0
-			if method.MethodResultId > 0 {
-				method.ResultEntry = entries[index]
-				index++
-			}
-			method.Params = entries[index:]
-		}
-		result[i] = method
 	}
 	return result, nil
 }
@@ -350,43 +376,39 @@ func (m *methodService) GetMethodDetailByMethod(me entry.Method) (*vo.Method, er
 }
 
 func (m *methodService) AddMethod(method *vo.Method) error {
-	tx := m.Begin()
-	if err := tx.Save(&method.Method).Error; err != nil {
-		tx.Rollback()
-		return err
-	}
-	relations := make([]entry.MethodEntry, 0)
-	if method.MethodResultId > 0 {
-		relations = append(relations, entry.MethodEntry{
-			TypeId:   entry.MethodEntryResult,
-			EntryId:  method.MethodResultId,
-			MethodId: method.Method.ID,
+	relations := make([]entry.MethodParam, 0)
+	if method.Result != nil && method.Result.EntryId != 0 {
+		relations = append(relations, entry.MethodParam{
+			TypeId:  entry.MethodEntryResult,
+			EntryId: method.Result.EntryId,
 		})
 	}
-	if len(method.MethodParams) > 0 {
-		for _, idStr := range strings.Split(method.MethodParams, ",") {
-			if idStr = strings.TrimSpace(idStr); idStr != "" {
-				if id, err := strconv.ParseInt(idStr, 10, 64); err != nil {
-					tx.Rollback()
-					return err
-				} else {
-					relations = append(relations, entry.MethodEntry{
-						TypeId:   entry.MethodEntryParam,
-						EntryId:  id,
-						MethodId: method.ID,
-					})
-				}
-			}
+	if method.Params != nil && len(method.Params) > 0 {
+		for _, param := range method.Params {
+			relations = append(relations, entry.MethodParam{
+				TypeId:  entry.MethodEntryParam,
+				EntryId: param.EntryId,
+			})
 		}
+	}
+	var err error
+	tx := m.Begin()
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+	if err = tx.Save(&method.Method).Error; err != nil {
+		return err
 	}
 	length := len(relations)
 	if length > 0 {
 		valueStrings := make([]string, 0, length)
 		valueArgs := make([]interface{}, 0, length)
 		for _, relation := range relations {
-			valueStrings = append(valueStrings, fmt.Sprintf("(%d, %d, %d)", relation.TypeId, relation.MethodId, relation.EntryId))
+			valueStrings = append(valueStrings, fmt.Sprintf("(%d, %d, %d)", relation.TypeId, method.Method.ID, relation.EntryId))
 		}
-		smt := "INSERT IGNORE INTO d_method_entry(type_id, method_id, entry_id) VALUES " + strings.Join(valueStrings, ",")
+		smt := "INSERT IGNORE INTO d_method_param(type_id, method_id, entry_id) VALUES " + strings.Join(valueStrings, ",")
 		if err := tx.Exec(smt, valueArgs...).Error; err != nil {
 			tx.Rollback()
 			return err
@@ -405,7 +427,7 @@ func (m *methodService) GetMethodDetail(methodId int64) (*vo.Method, error) {
 }
 
 func (m *methodService) DeleteMethod(methodId int64) (err error) {
-	relations := make([]entry.MethodEntry, 0)
+	relations := make([]entry.MethodParam, 0)
 	err = m.Where("method_id = ?", methodId).Find(&relations).Error
 	if err != nil {
 		return err
@@ -419,7 +441,7 @@ func (m *methodService) DeleteMethod(methodId int64) (err error) {
 	if err = tx.Delete(entry.Method{}, "id = ?", methodId).Error; err != nil {
 		return err
 	}
-	if err = tx.Delete(entry.MethodEntry{}, "method_id = ?", methodId).Error; err != nil {
+	if err = tx.Delete(entry.MethodParam{}, "method_id = ?", methodId).Error; err != nil {
 		return err
 	}
 	tx.Commit()

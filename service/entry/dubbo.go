@@ -6,7 +6,7 @@ const (
 	//CollectionType = 10
 
 	MethodEntryResult = 1
-	MethodEntryParam = 2
+	MethodEntryParam  = 2
 )
 
 type Registry struct {
@@ -24,7 +24,6 @@ func (Registry) TableName() string {
 	return "d_registry"
 }
 
-
 type Reference struct {
 	Base
 	RegistryId    int64  `gorm:"column:registry_id" json:"registryId"`
@@ -41,12 +40,22 @@ type Method struct {
 	Base
 	ReferenceId    int64  `gorm:"column:reference_id" json:"referenceId"`
 	MethodName     string `gorm:"column:method_name" json:"methodName"`
-	MethodResultId int64  `gorm:"column:method_result_id" json:"methodResultId"`
-	MethodParams   string `gorm:"column:method_params" json:"methodParams"`
 }
 
 func (Method) TableName() string {
 	return "d_method"
+}
+
+type MethodParam struct {
+	Base
+	TypeId         int    `gorm:"column:type_id" json:"typeId"`
+	GenericsValues string `gorm:"column:generics_values" json:"genericsValues"`
+	MethodId       int64  `gorm:"column:method_id" json:"methodId"`
+	EntryId        int64  `gorm:"column:entry_id" json:"entryId"`
+}
+
+func (MethodParam) TableName() string {
+	return "d_method_param"
 }
 
 //type MethodEntry struct {
@@ -60,4 +69,3 @@ func (Method) TableName() string {
 //	return "d_method_entry"
 //}
 //
-

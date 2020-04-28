@@ -22,8 +22,8 @@ type ReferenceMethodInfo struct {
 
 type Method struct {
 	entry.Method
-	ResultEntry *entry.EntryStructure   `json:"result"`
-	Params      []*entry.EntryStructure `json:"params"`
+	Result *entry.MethodParamStructure   `json:"result"`
+	Params []*entry.MethodParamStructure `json:"params"`
 }
 
 //type Entry struct {

@@ -34,9 +34,10 @@ type ReferenceService interface {
 type MethodService interface {
 	AddMethod(method *vo.Method) error
 	GetMethodDetail(methodId int64) (*vo.Method, error)
-	GetMethodDetailByIds(methodIds []int64) ([]*vo.Method, error)
 	GetMethodDetailByMethod(method entry.Method) (*vo.Method, error)
+	GetMethodDetailByIds(methodIds []int64) ([]*vo.Method, error)
 	DeleteMethod(methodId int64) error
+
 	GetMethodsByReferenceId(referenceId int64) ([]entry.Method, error)
 	GetMethodInfoByReferenceId(referenceId int64) (*vo.ReferenceMethodInfo, error)
 }
@@ -44,14 +45,12 @@ type MethodService interface {
 type EntryService interface {
 	SaveEntry(entry *entry.EntryStructure) error
 	UpdateEntry(entry *entry.EntryStructure) error
-
-	//UpdateEntry(entry *vo.Entry) error
 	DeleteEntry(id int64) error
 	DeleteEntriesByIdsIgnoreError(ids []int64)
-	GetEntry(id int64) (*vo.Entry, error)
-	GetEntries(ids []int64) ([]*vo.Entry, error)
+	GetEntry(id int64) (*entry.EntryStructure, error)
+	GetEntries(ids []int64) ([]*entry.EntryStructure, error)
 	GetByType(typeId int) ([]entry.Entry, error)
-	SearchEntries(name string, pageSize int) ([]*vo.Entry, error)
+	SearchEntries(name string, pageSize int) ([]*entry.EntryStructure, error)
 }
 
 type RouterService interface {
