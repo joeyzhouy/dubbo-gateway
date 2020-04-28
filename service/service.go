@@ -37,9 +37,9 @@ type MethodService interface {
 	GetMethodDetailByMethod(method entry.Method) (*vo.Method, error)
 	GetMethodDetailByIds(methodIds []int64) ([]*vo.Method, error)
 	DeleteMethod(methodId int64) error
-
 	GetMethodsByReferenceId(referenceId int64) ([]entry.Method, error)
 	GetMethodInfoByReferenceId(referenceId int64) (*vo.ReferenceMethodInfo, error)
+	SearchMethods(registryId, referenceId int64, methodName string) ([]*vo.Method, error)
 }
 
 type EntryService interface {
@@ -51,6 +51,7 @@ type EntryService interface {
 	GetEntries(ids []int64) ([]*entry.EntryStructure, error)
 	GetByType(typeId int) ([]entry.Entry, error)
 	SearchEntries(name string, pageSize int) ([]*entry.EntryStructure, error)
+	ListAll() ([]*entry.EntryStructure, error)
 }
 
 type RouterService interface {

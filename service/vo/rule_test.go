@@ -2,6 +2,7 @@ package vo
 
 import (
 	"dubbo-gateway/service/entry"
+	"encoding/json"
 	"fmt"
 	"testing"
 )
@@ -58,18 +59,28 @@ func getTestEntryMap() map[int64]entry.Entry {
 }
 
 func TestRule(t *testing.T) {
-	entryMap := getTestEntryMap()
-	memberEntry, _ := entryMap[101]
-	en := Entry{Entry: memberEntry}
-	err := en.InitStructure(entryMap)
+	//entryMap := getTestEntryMap()
+	//memberEntry, _ := entryMap[101]
+	//en := Entry{Entry: memberEntry}
+	//err := en.InitStructure(entryMap)
+	//if err != nil {
+	//	fmt.Println(err)
+	//	return
+	//}
+	//err = en.Structure.Convert(map[int64]int{}, entryMap)
+	//if err != nil {
+	//	fmt.Println(err)
+	//	return
+	//}
+	//fmt.Println(en)
+
+	str := `{"key":"cn.test.Member","name":"会员","generics":"A","structure":[{"label":"年龄","filedName":"age","id":2},{"label":"小弟","filedName":"youngerBrother","id":9,"genericsValue":{"T":{"entryId":1}}}]}`
+
+	es := new(entry.EntryStructure)
+	err := json.Unmarshal([]byte(str), es)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	err = en.Structure.Convert(map[int64]int{}, entryMap)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	fmt.Println(en)
+	fmt.Println(err)
 }

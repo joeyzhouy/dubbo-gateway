@@ -32,6 +32,7 @@ func init() {
 	mGroup.GET("/", d.GetMethodDetail)
 	mGroup.DELETE("/", d.DeleteMethod)
 	mGroup.GET("/r", d.GetMethodsByReference)
+	mGroup.POST("/search", d.SearchMethods)
 	//mGroup.GET("/u", d.ListByUserIdAndMethodName)
 
 	reGroup := web.AuthGroup().Group("/r")
@@ -46,6 +47,9 @@ func init() {
 
 	eGroup := web.AuthGroup().Group("/e")
 	eGroup.POST("/search", d.SearchEntries)
+	eGroup.POST("/", d.AddEntry)
+	eGroup.GET("/list", d.GetAllEntries)
+
 }
 
 type dubboController struct {
@@ -58,6 +62,36 @@ type dubboController struct {
 type SearchEntryParam struct {
 	Name     string `json:"name"`
 	PageSize int    `json:"pageSize"`
+}
+
+type SearchMethodParam struct {
+	Name        string `json:"methodName"`
+	RegistryId  int64  `json:"registryId"`
+	ReferenceId int64  `json:"referenceId"`
+}
+
+func (d *dubboController) SearchMethods(ctx *gin.Context) {
+	param := new(SearchMethodParam)
+	if utils.IsErrorEmpty(ctx.ShouldBindJSON(param), ctx) {
+		result, err := d.MethodService.SearchMethods(param.RegistryId, param.RegistryId, param.Name)
+		utils.OperateResponse(result, err, ctx)
+	}
+}
+
+func (d *dubboController) GetAllEntries(ctx *gin.Context) {
+	result, err := d.EntryService.ListAll()
+	utils.OperateResponse(result, err, ctx)
+}
+
+func (d *dubboController) AddEntry(ctx *gin.Context) {
+	e := new(entry.EntryStructure)
+	if utils.IsErrorEmpty(ctx.ShouldBindJSON(e), ctx) {
+		if e.Name == "" || e.Key == "" {
+			utils.ParamMissResponseOperation(ctx)
+			return
+		}
+		utils.OperateResponse(nil, d.EntryService.SaveEntry(e), ctx)
+	}
 }
 
 func (d *dubboController) SearchEntries(ctx *gin.Context) {

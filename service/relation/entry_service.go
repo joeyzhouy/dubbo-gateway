@@ -19,6 +19,15 @@ type entryService struct {
 	*gorm.DB
 }
 
+func (e *entryService) ListAll() ([]*entry.EntryStructure, error) {
+	var entries []entry.Entry
+	err := e.Find(&entries).Error
+	if err != nil {
+		return make([]*entry.EntryStructure, 0), err
+	}
+	return e.getEntries(entries)
+}
+
 func (e *entryService) SearchEntries(name string, pageSize int) ([]*entry.EntryStructure, error) {
 	var ids []int64
 	db := e.Table("d_entry")
@@ -68,7 +77,7 @@ func (e *entryService) SaveEntry(es *entry.EntryStructure) error {
 		for index, id := range referIds {
 			en.ReferIds += strconv.FormatInt(id, 10)
 			if index != length-1 {
-				en.ReferIds = ","
+				en.ReferIds += ","
 			}
 		}
 	}
@@ -78,7 +87,7 @@ func (e *entryService) SaveEntry(es *entry.EntryStructure) error {
 			tx.Rollback()
 		}
 	}()
-	err = tx.Save(es).Error
+	err = tx.Create(&en).Error
 	if err != nil {
 		return err
 	}
@@ -182,12 +191,23 @@ func (e *entryService) GetEntry(id int64) (*entry.EntryStructure, error) {
 }
 
 func (e *entryService) GetEntries(ids []int64) ([]*entry.EntryStructure, error) {
+	var entries []entry.Entry
+	err := e.Where("id IN (?)", ids).Find(&entries).Error
+	if err != nil {
+		return nil, err
+	}
+	return e.getEntries(entries)
+}
+
+func (e *entryService) getEntries(entries []entry.Entry) ([]*entry.EntryStructure, error) {
+	var err error
 	result := make([]*entry.EntryStructure, 0)
-	err := e.Where("id IN (?)", &ids).Find(&result).Error
-	for _, es := range result {
+	for _, e := range entries {
+		es := &entry.EntryStructure{Entry: e}
 		if err = es.InitStructure(); err != nil {
 			return nil, err
 		}
+		result = append(result, es)
 	}
 	return result, err
 }

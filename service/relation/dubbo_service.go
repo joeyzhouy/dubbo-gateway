@@ -227,6 +227,25 @@ type methodService struct {
 	service.EntryService
 }
 
+func (m *methodService) SearchMethods(registryId, referenceId int64, methodName string) ([]*vo.Method, error) {
+	db := m.Table("d_method").Select("d_method.id, d_method.reference_id, d_method.method_name, d_method.create_time, d_method.modify_time, d_method.is_delete")
+	if registryId != 0 {
+		db = db.Joins("JOIN d_reference ON d_reference.id = d_method.reference_id").Where("d_reference.registry_id = ?", registryId)
+	}
+	if referenceId != 0 {
+		db = db.Where("d_method.reference_id = ?", referenceId)
+	}
+	if methodName != "" {
+		db = db.Where("d_method.method_name LIKE ?", "%"+methodName+"%")
+	}
+	var methods []entry.Method
+	err := db.Find(&methods).Error
+	if err != nil {
+		return nil, err
+	}
+	return m.GetMethodDetailByMethods(methods)
+}
+
 func (m *methodService) GetMethodInfoByReferenceId(referenceId int64) (*vo.ReferenceMethodInfo, error) {
 	result := new(vo.ReferenceMethodInfo)
 	err := m.Where("id = ?", referenceId).Find(&result).Error
@@ -256,12 +275,10 @@ func (m *methodService) GetMethodInfoByReferenceId(referenceId int64) (*vo.Refer
 		return nil, errors.New("no provider interfaceName: " + result.InterfaceName)
 	}
 	node := nodes[0]
-	fmt.Println(node.SubPath)
 	str, err := url.QueryUnescape(node.SubPath)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println(str)
 	temp, err := url.Parse(str)
 	if err != nil {
 		return nil, err
@@ -280,6 +297,8 @@ func (m *methodService) GetMethodInfoByReferenceId(referenceId int64) (*vo.Refer
 		} else {
 			result.Methods = voMethods
 		}
+	} else {
+		result.Methods = make([]*vo.Method, 0)
 	}
 	noMethods := make([]string, 0)
 	methodMap := make(map[string]int)
@@ -381,13 +400,15 @@ func (m *methodService) AddMethod(method *vo.Method) error {
 		relations = append(relations, entry.MethodParam{
 			TypeId:  entry.MethodEntryResult,
 			EntryId: method.Result.EntryId,
+			Seq:     1,
 		})
 	}
 	if method.Params != nil && len(method.Params) > 0 {
-		for _, param := range method.Params {
+		for index, param := range method.Params {
 			relations = append(relations, entry.MethodParam{
 				TypeId:  entry.MethodEntryParam,
 				EntryId: param.EntryId,
+				Seq:     index + 1,
 			})
 		}
 	}
@@ -406,9 +427,9 @@ func (m *methodService) AddMethod(method *vo.Method) error {
 		valueStrings := make([]string, 0, length)
 		valueArgs := make([]interface{}, 0, length)
 		for _, relation := range relations {
-			valueStrings = append(valueStrings, fmt.Sprintf("(%d, %d, %d)", relation.TypeId, method.Method.ID, relation.EntryId))
+			valueStrings = append(valueStrings, fmt.Sprintf("(%d, %d, %d, %d)", relation.TypeId, method.Method.ID, relation.EntryId, relation.Seq))
 		}
-		smt := "INSERT IGNORE INTO d_method_param(type_id, method_id, entry_id) VALUES " + strings.Join(valueStrings, ",")
+		smt := "INSERT IGNORE INTO d_method_param(type_id, method_id, entry_id, seq) VALUES " + strings.Join(valueStrings, ",")
 		if err := tx.Exec(smt, valueArgs...).Error; err != nil {
 			tx.Rollback()
 			return err

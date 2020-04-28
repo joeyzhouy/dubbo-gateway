@@ -6,7 +6,6 @@ import (
 	"dubbo-gateway/common/constant"
 	"dubbo-gateway/common/extension"
 	"dubbo-gateway/registry"
-	"fmt"
 	constants "github.com/apache/dubbo-go/common/constant"
 	"github.com/apache/dubbo-go/common/logger"
 	"github.com/dubbogo/go-zookeeper/zk"
@@ -142,7 +141,6 @@ func NewZkDiscover(conf config.DiscoverConfig) (extension.Discover, error) {
 }
 
 func (z *zkRegistry) GetChildNode(basePath string) ([]extension.Node, error) {
-	fmt.Println(basePath)
 	children, _, err := z.cli.Conn.Children(basePath)
 	if err != nil {
 		return nil, err

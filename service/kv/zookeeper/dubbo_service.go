@@ -11,7 +11,6 @@ import (
 	perrors "github.com/pkg/errors"
 	"regexp"
 	"strconv"
-	"time"
 )
 
 var registerReg = regexp.MustCompile(constant.UserPath + `/\d/` + constant.Registries + `/(\d+)`)
@@ -281,6 +280,10 @@ type methodService struct {
 	conn *zk.Conn
 }
 
+func (m *methodService) SearchMethods(registryId, referenceId int64, methodName string) ([]*vo.Method, error) {
+	panic("implement me")
+}
+
 func (m *methodService) GetMethodInfoByReferenceId(referenceId int64) (*vo.ReferenceMethodInfo, error) {
 	panic("implement me")
 }
@@ -308,9 +311,9 @@ func (m *methodService) AddMethod(method *vo.Method) error {
 		return err
 	}
 	registryInfoPath := string(bs)
-	current := time.Now()
-	method.CreateTime = current
-	method.ModifyTime = current
+	//current := time.Now()
+	//method.CreateTime = current
+	//method.ModifyTime = current
 	method.ID, err = next()
 	if err != nil {
 		return err
