@@ -20,6 +20,14 @@ type registerService struct {
 	conn *zk.Conn
 }
 
+func (r *registerService) GetByRegistryId(registryId int64) (*vo.Registry, error) {
+	panic("implement me")
+}
+
+func (r *registerService) GetRegistryByName(name string) ([]entry.Registry, error) {
+	panic("implement me")
+}
+
 func NewRegisterService(conn *zk.Conn, event <-chan zk.Event) service.RegisterService {
 	rs := &registerService{conn}
 	if err := CreateBasePath(constant.RegistrySearchRoot, rs.conn); err != nil {
@@ -120,6 +128,10 @@ func (r *registerService) ListAll() ([]entry.Registry, error) {
 
 type referenceService struct {
 	conn *zk.Conn
+}
+
+func (r *referenceService) GetByRegistryIdAndName(registryId int64, name string) ([]entry.Reference, error) {
+	panic("implement me")
 }
 
 func (r *referenceService) GetReferenceById(id int64) (*vo.Reference, error) {
@@ -267,6 +279,18 @@ func (r *referenceService) GetByIds(ids []int64) ([]entry.Reference, error) {
 
 type methodService struct {
 	conn *zk.Conn
+}
+
+func (m *methodService) GetMethodInfoByReferenceId(referenceId int64) (*vo.ReferenceMethodInfo, error) {
+	panic("implement me")
+}
+
+func (m *methodService) GetMethodDetailByIds(methodIds []int64) ([]*vo.Method, error) {
+	panic("implement me")
+}
+
+func (m *methodService) GetMethodDetailByMethod(method entry.Method) (*vo.Method, error) {
+	panic("implement me")
 }
 
 func NewMethodService(conn *zk.Conn, event <-chan zk.Event) service.MethodService {

@@ -37,6 +37,10 @@ type metaZookeeper struct {
 	Config *zookeeperConfig
 }
 
+func (z *metaZookeeper) NewEntryService() service.EntryService {
+	panic("implement me")
+}
+
 func (z *metaZookeeper) createZkConn() (*zk.Conn, <-chan zk.Event, error) {
 	conn, ch, err := zk.Connect(strings.Split(z.Config.Addresses, ","), z.Config.TimeOut)
 	return conn, ch, err

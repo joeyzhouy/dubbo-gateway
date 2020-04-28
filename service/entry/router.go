@@ -16,7 +16,8 @@ func (ApiConfig) TableName() string {
 type ApiFilter struct {
 	Base
 	ReferenceId int64  `gorm:"column:reference_id" json:"referenceId"`
-	MethodName  string `gorm:"column:method_name" json:"methodName"`
+	//MethodName  string `gorm:"column:method_name" json:"methodName"`
+	MethodId    int64  `gorm:"column:method_id" json:"methodId"`
 }
 
 func (ApiFilter) TableName() string {

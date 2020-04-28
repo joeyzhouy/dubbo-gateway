@@ -6,6 +6,7 @@ import (
 	"dubbo-gateway/service/vo"
 	"errors"
 	"fmt"
+	"github.com/apache/dubbo-go/common/logger"
 	"github.com/jinzhu/gorm"
 	"strconv"
 	"strings"
@@ -19,44 +20,78 @@ type entryService struct {
 	*gorm.DB
 }
 
+func (e *entryService) SearchEntries(name string, pageSize int) ([]*vo.Entry, error) {
+	var ids []int64
+	db := e.Table("d_entry")
+	if name != "" {
+		db = db.Where("`key` LIKE ?", "%"+name+"%")
+	}
+	err := db.Order("id").Limit(pageSize).Pluck("id", &ids).Error
+	if err != nil {
+		if err != gorm.ErrRecordNotFound {
+			return nil, err
+		}
+	}
+	if len(ids) == 0 {
+		return make([]*vo.Entry, 0), nil
+	}
+	return e.GetEntries(ids)
+}
+
+func (e *entryService) DeleteEntriesByIdsIgnoreError(ids []int64) {
+	if len(ids) == 0 {
+		return
+	}
+	for _, entryId := range ids {
+		if err := e.DeleteEntry(entryId); err != nil {
+			logger.Errorf("delete entry[%d] error: %v", entryId, err)
+		}
+	}
+}
+
 func (e *entryService) GetByType(typeId int) ([]entry.Entry, error) {
 	result := make([]entry.Entry, 0)
 	err := e.Where("type_id = ?", typeId).Find(&result).Error
 	return result, err
 }
 
-func (e *entryService) SaveEntry(enVo *vo.Entry) error {
+func (e *entryService) SaveEntry(es *entry.EntryStructure) error {
 	var err error
-	en := enVo.Entry
+	en := es.Entry
 	en.TypeId = entry.ComplexType
-	en.Structure, err = enVo.GetStructureInfo()
+	en.Structure, err = es.GetStructureInfo()
 	if err != nil {
 		return err
 	}
-	referIds := enVo.GetTopRefIds()
-	referIdsLen := len(referIds)
-	if referIdsLen > 0 {
+	referIds := es.GetTopRefIds()
+	length := len(referIds)
+	if length > 0 {
 		for index, id := range referIds {
-			en.ReferIds = strconv.FormatInt(id, 10)
-			if index != referIdsLen-1 {
+			en.ReferIds += strconv.FormatInt(id, 10)
+			if index != length-1 {
 				en.ReferIds = ","
 			}
 		}
 	}
 	tx := e.Begin()
-	err = tx.Save(&en).Error
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+	err = tx.Save(es).Error
 	if err != nil {
-		tx.Rollback()
 		return err
 	}
-	if referIdsLen > 0 {
-		if err = e.batchRelation(en.ID, referIds, tx); err != nil {
+	if length > 0 {
+		if err = e.batchRelation(en.ID, referIds, tx) err != nil {
 			return err
 		}
 	}
 	tx.Commit()
 	return nil
 }
+
 
 func (e *entryService) UpdateEntry(enVo *vo.Entry) error {
 	var err error
@@ -176,7 +211,7 @@ func (e *entryService) GetEntries(ids []int64) ([]*vo.Entry, error) {
 
 func (e *entryService) GetAllReferEntryMap(ids []int64, result map[int64]entry.Entry) error {
 	temp := make([]entry.Entry, 0)
-	err := e.Where("id IN (?)", &ids).Find(result).Error
+	err := e.Where("id IN (?)", ids).Find(&temp).Error
 	if err != nil {
 		return err
 	}
@@ -191,6 +226,9 @@ func (e *entryService) GetAllReferEntryMap(ids []int64, result map[int64]entry.E
 				ids = append(ids, id)
 			}
 		}
+	}
+	if len(ids) == 0 {
+		return nil
 	}
 	return e.GetAllReferEntryMap(ids, result)
 }

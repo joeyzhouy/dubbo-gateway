@@ -55,7 +55,7 @@ func (r *routerService) AddApiConfig(api *vo.ApiConfigInfo) error {
 	api.ApiConfig.UriHash = utils.Hash(api.ApiConfig.Uri)
 	requests := make([]interface{}, 0)
 	filter := api.Filter
-	api.Filter = entry.ApiFilter{}
+	api.Filter = vo.ApiFilter{}
 	ids, err := nextN(2)
 	filter.ID = ids[0]
 	api.ApiConfig.ID = ids[1]
@@ -189,7 +189,7 @@ func (r *routerService) ListAll() ([]*vo.ApiConfigInfo, error) {
 			return nil, err
 		}
 		if filter, ok := filterMap[configInfo.ApiConfig.FilterId]; ok {
-			configInfo.Filter = filter
+			configInfo.Filter = vo.ApiFilter{ApiFilter: filter}
 		}
 		result = append(result, configInfo)
 	}
@@ -216,7 +216,7 @@ func (r *routerService) GetByApiId(api int64) (*vo.ApiConfigInfo, error) {
 		if err != nil {
 			return nil, err
 		}
-		result.Filter = *filter
+		result.Filter = vo.ApiFilter{ApiFilter: *filter}
 	}
 	return result, nil
 }

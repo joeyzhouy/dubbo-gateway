@@ -19,16 +19,31 @@ type zkClient struct {
 }
 
 func newZkClient(zkAddresses []string, timeout time.Duration) (*zkClient, error) {
+	z, event, err := newZkClientWithEvent(zkAddresses, timeout)
+	if err != nil {
+		return nil, err
+	}
+	go z.operateZkEvent(event)
+	return z, nil
+}
+
+func newZkClientWithEvent(zkAddresses []string, timeout time.Duration) (*zkClient, <-chan zk.Event, error) {
 	z := new(zkClient)
 	conn, event, err := zk.Connect(zkAddresses, timeout)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	z.Conn = conn
 	z.Timeout = timeout
 	z.ZkAddresses = zkAddresses
-	go z.operateZkEvent(event)
-	return z, nil
+	return z, event, nil
+}
+
+func (z *zkClient) Close() {
+	if z.Conn != nil {
+		z.Conn.Close()
+		z.Conn = nil
+	}
 }
 
 func (z *zkClient) operateZkEvent(event <-chan zk.Event) {
@@ -57,7 +72,7 @@ LOOP:
 				cs, ok := z.eventRegistry[e.Path]
 				if ok {
 					for _, c := range cs {
-						*c <- struct {}{}
+						*c <- struct{}{}
 					}
 				}
 				z.Unlock()

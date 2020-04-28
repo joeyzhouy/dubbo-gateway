@@ -1,9 +1,12 @@
 package entry
 
 const (
-	BaseType       = 1
-	ComplexType    = 5
+	BaseType    = 1
+	ComplexType = 5
 	//CollectionType = 10
+
+	MethodEntryResult = 1
+	MethodEntryParam = 2
 )
 
 type Registry struct {
@@ -20,6 +23,7 @@ type Registry struct {
 func (Registry) TableName() string {
 	return "d_registry"
 }
+
 
 type Reference struct {
 	Base
@@ -45,37 +49,15 @@ func (Method) TableName() string {
 	return "d_method"
 }
 
-type MethodParam struct {
-	Base
-	MethodId  int64  `gorm:"column:method_id" json:"methodId"`
-	Label     string `gorm:"column:label" json:"label"`
-	JavaClass string `gorm:"column:java_class" json:"javaClass"`
-	Seq       int    `gorm:"column:seq" json:"seq"`
-}
+//type MethodEntry struct {
+//	Base
+//	TypeId   int   `gorm:"column:type_id" json:"typeId"`
+//	MethodId int64 `gorm:"column:method_id" json:"methodId"`
+//	EntryId  int64 `gorm:"column:entry_id" json:"entryId"`
+//}
+//
+//func (MethodEntry) TableName() string {
+//	return "d_method_entry"
+//}
+//
 
-func (MethodParam) TableName() string {
-	return "d_method_param"
-}
-
-type Entry struct {
-	Base
-	Name      string `gorm:"column:name" json:"name"`
-	Key       string `gorm:"column:key" json:"key"`
-	TypeId    int    `gorm:"column:type_id" json:"typeId"`
-	ReferIds  string `gorm:"column:refer_ids" json:"refer_ids"`
-	Structure string `gorm:"column:structure" json:"structure"`
-}
-
-func (Entry) TableName() string {
-	return "d_entry"
-}
-
-type EntryRelation struct {
-	Base
-	EntryId int64 `gorm:"column:entry_id" json:"entryId"`
-	ReferId int64 `gorm:"column:refer_id" json:"referId"`
-}
-
-func (EntryRelation) TableName() string {
-	return "d_entry_relation"
-}

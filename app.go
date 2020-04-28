@@ -5,6 +5,7 @@ import (
 	_ "dubbo-gateway/communication"
 	_ "dubbo-gateway/meta/kv/zookeeper"
 	_ "dubbo-gateway/meta/relation/mysql"
+	_ "dubbo-gateway/registry/zookeeper"
 	//_ "dubbo-gateway/router"
 	_ "dubbo-gateway/web"
 	_ "dubbo-gateway/web/console"

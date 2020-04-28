@@ -26,6 +26,10 @@ type metaMysql struct {
 	db *gorm.DB
 }
 
+func (m *metaMysql) NewEntryService() service.EntryService {
+	return relationService.NewEntryService(m.db)
+}
+
 func (m *metaMysql) NewCommonService() service.CommonService {
 	return relationService.NewCommonService(m.db)
 }

@@ -1,11 +1,17 @@
 package relation
 
 import (
+	"dubbo-gateway/common/config"
+	"dubbo-gateway/common/extension"
 	"dubbo-gateway/service"
 	"dubbo-gateway/service/entry"
 	"dubbo-gateway/service/vo"
 	"errors"
+	"fmt"
 	"github.com/jinzhu/gorm"
+	"net/url"
+	"strconv"
+	"strings"
 )
 
 var NoRight = errors.New("no right")
@@ -16,6 +22,66 @@ func NewRegistryService(db *gorm.DB) service.RegisterService {
 
 type registryService struct {
 	*gorm.DB
+}
+
+func (d *registryService) GetByRegistryId(registryId int64) (*vo.Registry, error) {
+	registry := new(vo.Registry)
+	err := d.Where("id = ?", registryId).Find(registry).Error
+	if err != nil {
+		return nil, err
+	}
+	references := make([]entry.Reference, 0)
+	err = d.Where("registry_id = ?", registryId).Find(&references).Error
+	if err != nil {
+		if err != gorm.ErrRecordNotFound {
+			return nil, err
+		}
+	}
+	dbReferenceMap := make(map[string]int)
+	for _, reference := range references {
+		dbReferenceMap[reference.InterfaceName] = 1
+	}
+	dis, err := extension.GetDiscover(config.DiscoverConfig{
+		Password: registry.Password,
+		UserName: registry.UserName,
+		Protocol: registry.Protocol,
+		Address:  registry.Address,
+		Timeout:  registry.Timeout,
+	})
+	if err != nil {
+		return nil, err
+	}
+	nodes, err := dis.GetChildrenInterface()
+	if err != nil {
+		return nil, err
+	}
+	noInterfaces := make([]string, 0)
+	for _, node := range nodes {
+		if _, ok := dbReferenceMap[node.SubPath]; !ok {
+			noInterfaces = append(noInterfaces, node.SubPath)
+		}
+	}
+	registry.NoReferences = noInterfaces
+	registry.References = references
+	return registry, nil
+}
+
+func (d *registryService) GetRegistryByName(name string) ([]entry.Registry, error) {
+	result := make([]entry.Registry, 0)
+	var err error
+	if name == "" {
+		err = d.Find(&result).Error
+	} else {
+		err = d.Where("name LIKE ?", "%"+name+"%").Find(&result).Error
+	}
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return result, nil
+		} else {
+			return nil, err
+		}
+	}
+	return result, nil
 }
 
 func (d *registryService) ListAll() ([]entry.Registry, error) {
@@ -61,6 +127,36 @@ func (d *registryService) ListRegistryByUser(userId int64) ([]entry.Registry, er
 
 type referenceService struct {
 	*gorm.DB
+	service.MethodService
+}
+
+func (r *referenceService) GetByRegistryIdAndName(registryId int64, name string) ([]entry.Reference, error) {
+	result := make([]entry.Reference, 0)
+	var err error
+	var db *gorm.DB
+	if registryId != 0 {
+		db = r.Where("registry_id = ?", registryId)
+	}
+	if name != "" {
+		if db == nil {
+			db = r.Where("interface_name LIKE ?", "%"+name+"%")
+		} else {
+			db = db.Where("interface_name LIKE ?", "%"+name+"%")
+		}
+	}
+	if db == nil {
+		err = r.Find(&result).Error
+	} else {
+		err = db.Find(&result).Error
+	}
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return result, nil
+		} else {
+			return nil, err
+		}
+	}
+	return result, nil
 }
 
 func (r *referenceService) GetReferenceById(id int64) (*vo.Reference, error) {
@@ -69,19 +165,18 @@ func (r *referenceService) GetReferenceById(id int64) (*vo.Reference, error) {
 	if err != nil {
 		return nil, err
 	}
-	methods := make([]vo.Method, 0)
+	methods := make([]entry.Method, 0)
 	if err := r.Where("reference_id = ?", id).Find(&methods).Error; err != nil {
 		return nil, err
 	}
 	if len(methods) > 0 {
-		ms := make([]vo.Method, 0, len(methods))
-		params := make([]entry.MethodParam, 0)
+		ms := make([]*vo.Method, 0, len(methods))
 		for _, method := range methods {
-			if err = r.Where("method_id = ?", method.ID).Order("seq").Find(&params).Error; err != nil {
+			me, err := r.MethodService.GetMethodDetailByMethod(method)
+			if err != nil {
 				return nil, err
 			}
-			method.Params = params
-			ms = append(ms, method)
+			ms = append(ms, me)
 		}
 		result.Methods = ms
 	}
@@ -89,7 +184,7 @@ func (r *referenceService) GetReferenceById(id int64) (*vo.Reference, error) {
 }
 
 func NewReferenceService(db *gorm.DB) service.ReferenceService {
-	return &referenceService{db}
+	return &referenceService{db, NewMethodService(db)}
 }
 
 func (r *referenceService) GetByIds(ids []int64) ([]entry.Reference, error) {
@@ -130,17 +225,128 @@ func (r *referenceService) ListAll() ([]entry.Reference, error) {
 
 type methodService struct {
 	*gorm.DB
+	service.EntryService
 }
 
-func (m *methodService) ListByUserIdAndMethodName(userId int64, methodName string) ([]vo.MethodDesc, error) {
-	result := make([]vo.MethodDesc, 0)
-	if err := m.Table("d_method").Select("d_method.method_name as method_name, d_method.id as id, d_reference.interface_name as interface_name").
-		Joins("JOIN d_reference on d_reference.id = d_method.reference_id").
-		Where("d_method.user_id = ? and d_method.method_name LIKE ?", userId, methodName+"%").Scan(&result).Error;
-		err != nil {
-		return result, err
+func (m *methodService) GetMethodInfoByReferenceId(referenceId int64) (*vo.ReferenceMethodInfo, error) {
+	result := new(vo.ReferenceMethodInfo)
+	err := m.Where("id = ?", referenceId).Find(&result).Error
+	if err != nil {
+		return nil, err
+	}
+	registryConfig := new(entry.Registry)
+	err = m.Where("id = ?", result.RegistryId).Find(&registryConfig).Error
+	if err != nil {
+		return nil, err
+	}
+	dis, err := extension.GetDiscover(config.DiscoverConfig{
+		Timeout:  registryConfig.Timeout,
+		Address:  registryConfig.Address,
+		Protocol: registryConfig.Protocol,
+		Password: registryConfig.Password,
+		UserName: registryConfig.UserName,
+	})
+	if err != nil {
+		return nil, err
+	}
+	nodes, err := dis.GetChildrenMethod(result.InterfaceName)
+	if err != nil {
+		return nil, err
+	}
+	if len(nodes) == 0 {
+		return nil, errors.New("no provider interfaceName: " + result.InterfaceName)
+	}
+	node := nodes[0]
+	fmt.Println(node.SubPath)
+	str, err := url.QueryUnescape(node.SubPath)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println(str)
+	temp, err := url.Parse(str)
+	if err != nil {
+		return nil, err
+	}
+	interfaceMethods := strings.Split(temp.Query()["methods"][0], ",")
+	methods := make([]entry.Method, 0)
+	err = m.Where("reference_id = ?", referenceId).Find(&methods).Error
+	if err != nil {
+		if err != gorm.ErrRecordNotFound {
+			return nil, err
+		}
+	}
+	if len(methods) > 0 {
+		if voMethods, err := m.GetMethodDetailByMethods(methods); err != nil {
+			return nil, err
+		} else {
+			result.Methods = voMethods
+		}
+	}
+	noMethods := make([]string, 0)
+	methodMap := make(map[string]int)
+	for _, method := range methods {
+		methodMap[method.MethodName] = 1
+	}
+	for _, methodName := range interfaceMethods {
+		if _, ok := methodMap[methodName]; !ok {
+			noMethods = append(noMethods, methodName)
+		}
+	}
+	result.NoMethods = noMethods
+	return result, nil
+}
+
+func (m *methodService) GetMethodDetailByIds(methodIds []int64) ([]*vo.Method, error) {
+	methods := make([]entry.Method, 0)
+	err := m.Where("id IN (?)", &methodIds).Find(&methodIds).Error
+	if err != nil {
+		return nil, err
+	}
+	return m.GetMethodDetailByMethods(methods)
+}
+
+func (m *methodService) GetMethodDetailByMethods(methods []entry.Method) ([]*vo.Method, error) {
+	result := make([]*vo.Method, 0, len(methods))
+	for i, me := range methods {
+		method := &vo.Method{Method: me}
+		entryIds := make([]int64, 0)
+		if method.MethodResultId > 0 {
+			entryIds = append(entryIds, method.MethodResultId)
+		}
+		if len(method.MethodParams) > 0 {
+			for _, idStr := range strings.Split(method.MethodParams, ",") {
+				if idStr = strings.TrimSpace(idStr); idStr != "" {
+					if id, err := strconv.ParseInt(idStr, 10, 64); err != nil {
+						return nil, err
+					} else {
+						entryIds = append(entryIds, id)
+					}
+				}
+			}
+		}
+		if len(entryIds) >= 0 {
+			entries, err := m.EntryService.GetEntries(entryIds)
+			if err != nil {
+				return nil, err
+			}
+			index := 0
+			if method.MethodResultId > 0 {
+				method.ResultEntry = entries[index]
+				index++
+			}
+			method.Params = entries[index:]
+		}
+		result[i] = method
 	}
 	return result, nil
+}
+
+func (m *methodService) GetMethodDetailByMethod(me entry.Method) (*vo.Method, error) {
+	temp, err := m.GetMethodDetailByMethods([]entry.Method{me})
+	if err != nil {
+		return nil, err
+	}
+	return temp[0], nil
 }
 
 func (m *methodService) AddMethod(method *vo.Method) error {
@@ -149,9 +355,39 @@ func (m *methodService) AddMethod(method *vo.Method) error {
 		tx.Rollback()
 		return err
 	}
-	for _, mm := range method.Params {
-		mm.MethodId = method.Method.ID
-		if err := tx.Save(&mm).Error; err != nil {
+	relations := make([]entry.MethodEntry, 0)
+	if method.MethodResultId > 0 {
+		relations = append(relations, entry.MethodEntry{
+			TypeId:   entry.MethodEntryResult,
+			EntryId:  method.MethodResultId,
+			MethodId: method.Method.ID,
+		})
+	}
+	if len(method.MethodParams) > 0 {
+		for _, idStr := range strings.Split(method.MethodParams, ",") {
+			if idStr = strings.TrimSpace(idStr); idStr != "" {
+				if id, err := strconv.ParseInt(idStr, 10, 64); err != nil {
+					tx.Rollback()
+					return err
+				} else {
+					relations = append(relations, entry.MethodEntry{
+						TypeId:   entry.MethodEntryParam,
+						EntryId:  id,
+						MethodId: method.ID,
+					})
+				}
+			}
+		}
+	}
+	length := len(relations)
+	if length > 0 {
+		valueStrings := make([]string, 0, length)
+		valueArgs := make([]interface{}, 0, length)
+		for _, relation := range relations {
+			valueStrings = append(valueStrings, fmt.Sprintf("(%d, %d, %d)", relation.TypeId, relation.MethodId, relation.EntryId))
+		}
+		smt := "INSERT IGNORE INTO d_method_entry(type_id, method_id, entry_id) VALUES " + strings.Join(valueStrings, ",")
+		if err := tx.Exec(smt, valueArgs...).Error; err != nil {
 			tx.Rollback()
 			return err
 		}
@@ -161,38 +397,50 @@ func (m *methodService) AddMethod(method *vo.Method) error {
 }
 
 func (m *methodService) GetMethodDetail(methodId int64) (*vo.Method, error) {
-	method := new(vo.Method)
-	if err := m.Where("id = ?", methodId).Find(&method.Method).Error; err != nil {
+	method := new(entry.Method)
+	if err := m.Where("id = ?", methodId).Find(method).Error; err != nil {
 		return nil, err
 	}
-	if err := m.Where("method_id = ?", methodId).Find(&method.Params).Error; err != nil {
-		return nil, err
-	}
-	return method, nil
+	return m.GetMethodDetailByMethod(*method)
 }
 
-func (m *methodService) DeleteMethod(methodId int64) error {
-	tx := m.Begin()
-	if err := tx.Model(&entry.Method{}).Where("id = ?", methodId).UpdateColumn("is_delete", 1).Error; err != nil {
-		tx.Rollback()
+func (m *methodService) DeleteMethod(methodId int64) (err error) {
+	relations := make([]entry.MethodEntry, 0)
+	err = m.Where("method_id = ?", methodId).Find(&relations).Error
+	if err != nil {
 		return err
 	}
-	if err := tx.Model(&entry.MethodParam{}).Where("method_id = ?", methodId).UpdateColumn("is_delete", 1).Error; err != nil {
-		tx.Rollback()
+	tx := m.Begin()
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+	if err = tx.Delete(entry.Method{}, "id = ?", methodId).Error; err != nil {
+		return err
+	}
+	if err = tx.Delete(entry.MethodEntry{}, "method_id = ?", methodId).Error; err != nil {
 		return err
 	}
 	tx.Commit()
+	if len(relations) > 0 {
+		entries := make([]int64, 0)
+		for _, relation := range relations {
+			entries = append(entries, relation.EntryId)
+		}
+		go m.DeleteEntriesByIdsIgnoreError(entries)
+	}
 	return nil
 }
 
 func (m *methodService) GetMethodsByReferenceId(referenceId int64) ([]entry.Method, error) {
 	result := make([]entry.Method, 0)
-	if err := m.Where("registry_id = ?", referenceId).Find(&result).Error; err != nil {
+	if err := m.Where("reference_id = ?", referenceId).Find(&result).Error; err != nil {
 		return result, err
 	}
 	return result, nil
 }
 
 func NewMethodService(db *gorm.DB) service.MethodService {
-	return &methodService{db}
+	return &methodService{db, NewEntryService(db)}
 }

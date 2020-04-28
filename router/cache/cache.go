@@ -226,9 +226,9 @@ func (r *routerCache) refresh() error {
 			apiFilter := apiConfigInfo.Filter
 			rConfig, ok := referenceMap[apiFilter.ReferenceId]
 			if !ok {
-				//logger.Error("filter: can not found reference with id: %d, in apiConfig uri: %s", apiFilter.ReferenceId, apiCache.Uri)
 				return perrors.Errorf("filter: can not found reference with id: %d, in apiConfig uri: %s", apiFilter.ReferenceId, apiCache.ApiConfig.Uri)
 			}
+			//TODO filter param consumer
 			apiCache.filterReference = &referenceCache{
 				ID:              strconv.FormatInt(apiFilter.ID, 10),
 				ReferenceId:     apiFilter.ReferenceId,
@@ -254,12 +254,11 @@ func (r *routerCache) refresh() error {
 			chain := apiConfigInfo.Chains[index]
 			rConfig, ok := referenceMap[chain.Chain.ReferenceId]
 			if !ok {
-				//logger.Error("chain[first]: can not found reference with id: %d, in apiConfig uri: %s", chain.ApiChain.ReferenceId, apiCache.Uri)
 				return perrors.Errorf("chain[first]: can not found reference with id: %d, in apiConfig uri: %s", chain.Chain.ReferenceId, apiCache.ApiConfig.Uri)
 			}
 			params := make([]string, 0, len(chain.Params))
 			for _, param := range chain.Params {
-				params = append(params, param.JavaClass)
+				params = append(params, param.Key)
 			}
 			resultRules := make([]resultRule, 0, len(chain.Rules))
 			for _, rule := range chain.Rules {
@@ -343,8 +342,8 @@ func (r *routerCache) refreshConsumerConfig() error {
 		Request_Timeout: "3s",
 		Connect_Timeout: "3s",
 		ApplicationConfig: &config.ApplicationConfig{
-			Name:        "test",
-			Environment: "dev",
+			Name:        "gateway",
+			Environment: "prod",
 		},
 		Registries: registryMap,
 	}
@@ -538,7 +537,7 @@ func Add(apiId int64) error {
 		chain := apiConfigInfo.Chains[index]
 		params := make([]string, 0, len(chain.Params))
 		for _, param := range chain.Params {
-			params = append(params, param.JavaClass)
+			params = append(params, param.Key)
 		}
 		resultRules := make([]resultRule, 0, len(chain.Rules))
 		for _, rule := range chain.Rules {

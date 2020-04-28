@@ -16,13 +16,16 @@ func init() {
 	metaDate := extension.GetMeta()
 	d := &dubboController{metaDate.NewRegisterService(),
 		metaDate.NewMethodService(),
-		metaDate.NewReferenceService()}
+		metaDate.NewReferenceService(),
+		metaDate.NewEntryService()}
 	rGroup := web.AuthGroup().Group("/reg")
 	rGroup.GET("/protocol", d.Protocol)
 	rGroup.GET("/detail", d.GetRegisterDetail)
+	rGroup.GET("/dv", d.GetRegistryDetailWithReference)
 	rGroup.GET("/list", d.ListByUser)
 	rGroup.POST("/", d.CreateRegister)
 	rGroup.DELETE("/", d.DeleteRegister)
+	rGroup.POST("/search", d.SearchRegistry)
 
 	mGroup := web.AuthGroup().Group("/m")
 	mGroup.POST("/", d.AddMethod)
@@ -32,18 +35,83 @@ func init() {
 	//mGroup.GET("/u", d.ListByUserIdAndMethodName)
 
 	reGroup := web.AuthGroup().Group("/r")
+	reGroup.GET("/c", d.GetClusters)
 	reGroup.GET("/protocol", d.ReferenceProtocol)
 	reGroup.GET("/list", d.ListReference)
 	reGroup.GET("/detail", d.ReferenceDetail)
 	reGroup.GET("/u", d.ListReferenceByUser)
 	reGroup.POST("/", d.CreateReference)
 	reGroup.DELETE("/", d.DeleteReference)
+	reGroup.POST("/search", d.SearchReference)
+
+	eGroup := web.AuthGroup().Group("/e")
+	eGroup.POST("/search", d.SearchEntries)
 }
 
 type dubboController struct {
 	service.RegisterService
 	service.MethodService
 	service.ReferenceService
+	service.EntryService
+}
+
+type SearchEntryParam struct {
+	Name     string `json:"name"`
+	PageSize int    `json:"pageSize"`
+}
+
+func (d *dubboController) SearchEntries(ctx *gin.Context) {
+	param := new(SearchEntryParam)
+	if utils.IsErrorEmpty(ctx.ShouldBindJSON(param), ctx) {
+		size := param.PageSize
+		if size == 0 {
+			size = 10
+		}
+		result, err := d.EntryService.SearchEntries(param.Name, size)
+		utils.OperateResponse(result, err, ctx)
+	}
+}
+
+type SearchRegistryParam struct {
+	Name string `json:"name"`
+}
+
+func (d *dubboController) GetClusters(ctx *gin.Context) {
+	utils.OperateSuccessResponse([]string{
+		"failover", "failback", "failfast", "forking",
+	}, ctx)
+}
+
+func (d *dubboController) GetRegistryDetailWithReference(ctx *gin.Context) {
+	if idStr, ok := ctx.GetQuery("id"); ok {
+		if id, err := strconv.ParseInt(idStr, 10, 64); utils.IsErrorEmpty(err, ctx) {
+			result, err := d.RegisterService.GetByRegistryId(id)
+			utils.OperateResponse(result, err, ctx)
+		}
+	} else {
+		utils.ParamMissResponseOperation(ctx)
+	}
+}
+
+func (d *dubboController) SearchRegistry(ctx *gin.Context) {
+	param := new(SearchRegistryParam)
+	if utils.IsErrorEmpty(ctx.ShouldBindJSON(param), ctx) {
+		result, err := d.RegisterService.GetRegistryByName(param.Name)
+		utils.OperateResponse(result, err, ctx)
+	}
+}
+
+type SearchReferenceParam struct {
+	RegistryId int64  `json:"registryId"`
+	Name       string `json:"name"`
+}
+
+func (d *dubboController) SearchReference(ctx *gin.Context) {
+	param := new(SearchReferenceParam)
+	if utils.IsErrorEmpty(ctx.ShouldBindJSON(param), ctx) {
+		result, err := d.ReferenceService.GetByRegistryIdAndName(param.RegistryId, param.Name)
+		utils.OperateResponse(result, err, ctx)
+	}
 }
 
 func (d *dubboController) ReferenceProtocol(ctx *gin.Context) {
@@ -183,7 +251,7 @@ func (d *dubboController) DeleteMethod(ctx *gin.Context) {
 func (d *dubboController) GetMethodsByReference(ctx *gin.Context) {
 	if idStr, ok := ctx.GetQuery("id"); ok {
 		if id, err := strconv.ParseInt(idStr, 10, 64); utils.IsErrorEmpty(err, ctx) {
-			result, err := d.MethodService.GetMethodsByReferenceId(id)
+			result, err := d.MethodService.GetMethodInfoByReferenceId(id)
 			utils.OperateResponse(result, err, ctx)
 		}
 	} else {

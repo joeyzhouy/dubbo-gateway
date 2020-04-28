@@ -6,19 +6,15 @@ import (
 	"dubbo-gateway/service/entry"
 	"dubbo-gateway/service/vo"
 	"fmt"
+	"github.com/apache/dubbo-go/common/logger"
 	"github.com/jinzhu/gorm"
 	"strings"
 )
 
 type routerService struct {
 	*gorm.DB
+	service.MethodService
 }
-
-//func (r *routerService) GetByUri(uri string) (*entry.ApiConfig, error) {
-//	result := new(entry.ApiConfig)
-//	err := r.Where("uri = ?", uri).Find(&result).Error
-//	return result, err
-//}
 
 func (r *routerService) GetByApiId(api int64) (*vo.ApiConfigInfo, error) {
 	apiConfig := new(entry.ApiConfig)
@@ -44,6 +40,7 @@ func (r *routerService) GetByApiId(api int64) (*vo.ApiConfigInfo, error) {
 func (r *routerService) join(apiConfigs []entry.ApiConfig, apiFilters []entry.ApiFilter,
 	apiChains []entry.ApiChain, apiResultRules []entry.ApiResultRule) []*vo.ApiConfigInfo {
 	rules := make(map[int64][]entry.ApiResultRule)
+	methodIds := make([]int64, 0)
 	for _, rule := range apiResultRules {
 		temp, ok := rules[rule.ChainId]
 		if !ok {
@@ -53,23 +50,37 @@ func (r *routerService) join(apiConfigs []entry.ApiConfig, apiFilters []entry.Ap
 		rules[rule.ChainId] = temp
 	}
 	chains := make(map[int64][]vo.ApiChainInfo)
+	for _,chain := range apiChains {
+		methodIds = append(methodIds, chain.MethodId)
+	}
+	filterMap := make(map[int64]entry.ApiFilter)
+	for _, filter := range apiFilters {
+		filterMap[filter.ID] = filter
+		methodIds = append(methodIds, filter.MethodId)
+	}
+	methods, err := r.MethodService.GetMethodDetailByIds(methodIds)
+	if err != nil {
+		logger.Errorf("find method info error")
+		return nil
+	}
+	methodMap := make(map[int64]*vo.Method)
+	for _, method := range methods {
+		methodMap[method.ID] = method
+	}
 	for _, chain := range apiChains {
 		temp, ok := chains[chain.ApiId]
 		if !ok {
 			temp = make([]vo.ApiChainInfo, 0)
 		}
-		temp = append(temp, vo.ApiChainInfo{Chain: chain, Rules: rules[chain.ID]})
+		temp = append(temp, vo.ApiChainInfo{Chain: chain, Rules: rules[chain.ID], Method: *methodMap[chain.MethodId]})
 		chains[chain.ApiId] = temp
-	}
-	filterMap := make(map[int64]entry.ApiFilter)
-	for _, filter := range apiFilters {
-		filterMap[filter.ID] = filter
 	}
 	result := make([]*vo.ApiConfigInfo, 0, len(apiConfigs))
 	for _, config := range apiConfigs {
+		filter := filterMap[config.FilterId]
 		configInfo := new(vo.ApiConfigInfo)
 		configInfo.ApiConfig = config
-		configInfo.Filter = filterMap[config.FilterId]
+		configInfo.Filter = vo.ApiFilter{ApiFilter: filter, Method: *methodMap[filter.MethodId]}
 		configInfo.Chains = chains[config.ID]
 		result = append(result, configInfo)
 	}
@@ -165,5 +176,5 @@ func (r *routerService) ListRouterByUserId(userId int64) ([]entry.ApiConfig, err
 }
 
 func NewRouterService(db *gorm.DB) service.RouterService {
-	return &routerService{db}
+	return &routerService{db, NewMethodService(db)}
 }

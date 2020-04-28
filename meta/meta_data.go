@@ -8,4 +8,5 @@ type Meta interface {
 	NewReferenceService() service.ReferenceService
 	NewRegisterService() service.RegisterService
 	NewMethodService() service.MethodService
+	NewEntryService() service.EntryService
 }
