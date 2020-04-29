@@ -11,6 +11,42 @@ type ApiConfigInfo struct {
 	Chains       []ApiChainInfo  `json:"chains,omitempty"`
 }
 
+func (a *ApiConfigInfo) ConvertCache() (*ApiInfo, error) {
+	info := &ApiInfo{
+		ApiId:  a.ApiConfig.ID,
+		Method: a.ApiConfig.Method,
+	}
+	if len(a.FilterChains) > 0 {
+		var son *ApiChain
+		for i := len(a.FilterChains) - 1; i >= 0; i-- {
+			temp, err := a.FilterChains[i].ConvertCache()
+			if err != nil {
+				return nil, err
+			}
+			if son != nil {
+				temp.Next = son
+			}
+			son = temp
+		}
+		info.FilterChain = son
+	}
+	if len(a.Chains) > 0 {
+		var son *ApiChain
+		for i := len(a.Chains) - 1; i >= 0; i-- {
+			temp, err := a.FilterChains[i].ConvertCache()
+			if err != nil {
+				return nil, err
+			}
+			if son != nil {
+				temp.Next = son
+			}
+			son = temp
+		}
+		info.MethodChain = son
+	}
+	return info, nil
+}
+
 func (a *ApiConfigInfo) FillChains(chains []entry.ApiChain, mappings []entry.ApiParamMapping) error {
 	var apiChainInfo ApiChainInfo
 	filterChains := make([]ApiChainInfo, 0)
@@ -66,6 +102,16 @@ type ApiChainInfo struct {
 	Chain         entry.ApiChain    `json:"chain,omitempty"`
 	ParamMappings []ApiParamMapping `json:"paramMappings,omitempty"`
 	ResultMapping []ApiParamMapping `json:"resultMapping,omitempty"`
+}
+
+func (a *ApiChainInfo) ConvertCache() (*ApiChain, error) {
+	//TODO
+	chain := &ApiChain{
+		ReferenceId: a.Chain.ReferenceId,
+		ChainId: a.Chain.ID,
+		//MethodName: a.Chain.me
+	}
+	return chain, nil
 }
 
 func (a *ApiChainInfo) FillMappings(mappings []entry.ApiParamMapping) error {

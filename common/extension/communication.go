@@ -16,6 +16,7 @@ const (
 
 type Mode interface {
 	Start()
+	Init() error
 	//Add(apiId int64) error
 	//Remove(apiId int64) error
 	//Refresh() error
