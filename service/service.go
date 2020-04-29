@@ -55,10 +55,18 @@ type EntryService interface {
 }
 
 type RouterService interface {
-	AddRouter(api *entry.ApiConfig) error
-	AddApiConfig(api *vo.ApiConfigInfo) error
-	DeleteRouter(apiId int64) error
-	ListRouterByUserId(userId int64) ([]entry.ApiConfig, error)
-	ListAll() ([]*vo.ApiConfigInfo, error)
-	GetByApiId(api int64) (*vo.ApiConfigInfo, error)
+
+	AddConfig(apiConfig *vo.ApiConfigInfo) error
+	//UpdateConfig(apiConfig *vo.ApiConfigInfo) error
+	ModifyConfigStatus(configId int64, status int) error
+	DeleteConfig(configId int64) error
+	GetByConfigId(configId int64) (*vo.ApiConfigInfo, error)
+	ListAllAvailable() ([]*vo.ApiConfigInfo, error)
+
+	//AddRouter(api *entry.ApiConfig) error
+	//AddApiConfig(api *vo.ApiConfigInfo) error
+	//DeleteRouter(apiId int64) error
+	//ListRouterByUserId(userId int64) ([]entry.ApiConfig, error)
+	//ListAll() ([]*vo.ApiConfigInfo, error)
+	//GetByApiId(api int64) (*vo.ApiConfigInfo, error)
 }

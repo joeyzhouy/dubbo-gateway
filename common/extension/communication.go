@@ -2,12 +2,34 @@ package extension
 
 import "dubbo-gateway/common/config"
 
+const (
+	Add EventType = iota
+	Modify
+	Delete
+)
+
+const (
+	Entry Domain = iota
+	Method
+	Api
+)
+
 type Mode interface {
 	Start()
-	Add(apiId int64) error
-	Remove(apiId int64) error
-	Refresh() error
+	//Add(apiId int64) error
+	//Remove(apiId int64) error
+	//Refresh() error
+	Notify(event ModeEvent)
 	Close()
+}
+
+type EventType int
+type Domain int
+
+type ModeEvent struct {
+	Type   EventType
+	Domain Domain
+	Key    int64
 }
 
 var modes = make(map[string]func(deploy *config.Deploy) (Mode, error))

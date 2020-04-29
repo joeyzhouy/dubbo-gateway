@@ -1,12 +1,11 @@
 package relation
 
 import (
-	"dubbo-gateway/common/utils"
 	"dubbo-gateway/service"
 	"dubbo-gateway/service/entry"
 	"dubbo-gateway/service/vo"
 	"fmt"
-	"github.com/apache/dubbo-go/common/logger"
+	"github.com/go-errors/errors"
 	"github.com/jinzhu/gorm"
 	"strings"
 )
@@ -16,163 +15,206 @@ type routerService struct {
 	service.MethodService
 }
 
-func (r *routerService) GetByApiId(api int64) (*vo.ApiConfigInfo, error) {
-	apiConfig := new(entry.ApiConfig)
-	if err := r.Where("id = ?", api).Find(&apiConfig).Error; err != nil {
-		return nil, err
-	}
-	apiFilter := new(entry.ApiFilter)
-	if err := r.Where("api_id = ? and is_delete = 0", api).Find(apiFilter).Error; err != nil {
-		return nil, err
-	}
-	apiChains := make([]entry.ApiChain, 0)
-	if err := r.Where("api_id = ? and is_delete = 0", api).Order("seq").Find(&apiChains).Error; err != nil {
-		return nil, err
-	}
-	apiResultRules := make([]entry.ApiResultRule, 0)
-	if err := r.Where("api_id = ? and is_delete = 0", api).Order("chain_id, seq").Find(&apiResultRules).Error; err != nil {
-		return nil, err
-	}
-	return r.join([]entry.ApiConfig{*apiConfig}, []entry.ApiFilter{*apiFilter},
-		apiChains, apiResultRules)[0], nil
+func (r *routerService) ModifyConfigStatus(configId int64, status int) error {
+	err := r.Where("id = ?", configId).UpdateColumn("status", status).Error
+	// TODO notify cache
+	return err
 }
 
-func (r *routerService) join(apiConfigs []entry.ApiConfig, apiFilters []entry.ApiFilter,
-	apiChains []entry.ApiChain, apiResultRules []entry.ApiResultRule) []*vo.ApiConfigInfo {
-	rules := make(map[int64][]entry.ApiResultRule)
-	methodIds := make([]int64, 0)
-	for _, rule := range apiResultRules {
-		temp, ok := rules[rule.ChainId]
-		if !ok {
-			temp = make([]entry.ApiResultRule, 0)
+func (r *routerService) UpdateConfig(apiConfig *vo.ApiConfigInfo) (err error) {
+	tx := r.Begin()
+	defer func() {
+		if err != nil {
+			tx.Rollback()
 		}
-		temp = append(temp, rule)
-		rules[rule.ChainId] = temp
+	}()
+	if err = r.deleteConfigRelations(tx, apiConfig.ApiConfig.ID); err != nil {
+		return
 	}
-	chains := make(map[int64][]vo.ApiChainInfo)
-	for _,chain := range apiChains {
-		methodIds = append(methodIds, chain.MethodId)
+	return r.saveChains(tx, apiConfig)
+}
+
+func (r *routerService) GetByConfigId(configId int64) (*vo.ApiConfigInfo, error) {
+	var (
+		apiConfig entry.ApiConfig
+		chains    []entry.ApiChain
+		mappings  []entry.ApiParamMapping
+	)
+	if err := r.Where("id = ?", configId).Find(&apiConfig).Error; err != nil {
+		return nil, err
 	}
-	filterMap := make(map[int64]entry.ApiFilter)
-	for _, filter := range apiFilters {
-		filterMap[filter.ID] = filter
-		methodIds = append(methodIds, filter.MethodId)
+	if err := r.Where("api_id = ?", configId).Find(&chains).Error; err != nil {
+		return nil, err
 	}
-	methods, err := r.MethodService.GetMethodDetailByIds(methodIds)
+	if err := r.Where("api_id = ?", configId).Find(&mappings).Error; err != nil {
+		return nil, err
+	}
+	infos, err := r.join([]entry.ApiConfig{apiConfig}, chains, mappings)
 	if err != nil {
-		logger.Errorf("find method info error")
+		return nil, err
+	}
+	return infos[0], err
+}
+
+func (r *routerService) ListAllAvailable() ([]*vo.ApiConfigInfo, error) {
+	var (
+		apiConfigs []entry.ApiConfig
+		chains     []entry.ApiChain
+		mappings   []entry.ApiParamMapping
+	)
+	if err := r.Where("status = ?", entry.Available).Find(&apiConfigs).Error; err != nil {
+		return nil, err
+	}
+	if err := r.Table("d_api_chain").
+		Select("d_api_chain.id, d_api_chain.api_id, d_api_chain.type_id, d_api_chain.reference_id, d_api_chain.method_id, d_api_chain.seq").
+		Joins("JOIN d_api_config on d_api_config.id = d_api_chain.api_id").
+		Where("d_api_config.status = ?", entry.Available).Order("d_api_chain.id").Find(&chains).Error; err != nil {
+		return nil, err
+	}
+	if err := r.Table("d_api_param_mapping").
+		Select("d_api_param_mapping.id, d_api_param_mapping.api_id, d_api_param_mapping.chain_id, d_api_param_mapping,type_id, d_api_param_mapping.param_id, d_api_param_mapping.explain").
+		Joins("JOIN d_api_config on d_api_config.id = d_api_param_mapping.api_id").
+		Where("d_api_config.status = ?", entry.Available).Order("d_api_param_mapping.id").Find(&mappings).Error; err != nil {
+		return nil, err
+	}
+	return r.join(apiConfigs, chains, mappings)
+}
+
+func (r *routerService) join(apiConfigs []entry.ApiConfig, chains []entry.ApiChain,
+	mappings []entry.ApiParamMapping) ([]*vo.ApiConfigInfo, error) {
+	var (
+		apiConfigInfo *vo.ApiConfigInfo
+		chainMap      map[int64][]entry.ApiChain
+		paramMaps     map[int64][]entry.ApiParamMapping
+	)
+	apiInfos := make([]*vo.ApiConfigInfo, len(apiConfigs))
+	chainMap = make(map[int64][]entry.ApiChain)
+	paramMaps = make(map[int64][]entry.ApiParamMapping)
+	for _, chain := range chains {
+		configChains, ok := chainMap[chain.ID]
+		if !ok {
+			configChains = make([]entry.ApiChain, 0)
+		}
+		configChains = append(configChains, chain)
+		chainMap[chain.ID] = configChains
+	}
+	for _, param := range mappings {
+		chainParams, ok := paramMaps[param.ChainId]
+		if !ok {
+			chainParams = make([]entry.ApiParamMapping, 0)
+		}
+		chainParams = append(chainParams, param)
+		paramMaps[param.ApiId] = chainParams
+	}
+	for index, apiConfig := range apiConfigs {
+		apiConfigInfo = &vo.ApiConfigInfo{
+			ApiConfig: apiConfig,
+		}
+		if err := apiConfigInfo.FillChains(chainMap[apiConfig.ID], paramMaps[apiConfig.ID]); err != nil {
+			return nil, err
+		}
+		apiInfos[index] = apiConfigInfo
+	}
+	return apiInfos, nil
+}
+
+func (r *routerService) AddConfig(apiConfig *vo.ApiConfigInfo) (err error) {
+	tx := r.Begin()
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+	if err = tx.Save(&(apiConfig.ApiConfig)).Error; err != nil {
+		return
+	}
+	return r.saveChains(tx, apiConfig)
+}
+
+func (r *routerService) saveChains(tx *gorm.DB, apiConfig *vo.ApiConfigInfo) (err error) {
+	if apiConfig.ApiConfig.ID == 0 {
+		return errors.New("miss api configId")
+	}
+	chainsLength := len(apiConfig.Chains)
+	filtersLength := len(apiConfig.FilterChains)
+	if chainsLength == 0 && filtersLength == 0 {
 		return nil
 	}
-	methodMap := make(map[int64]*vo.Method)
-	for _, method := range methods {
-		methodMap[method.ID] = method
+	var (
+		valueStrings []string
+		valueArgs    []interface{}
+		isRollBack   bool
+	)
+	if tx == nil {
+		tx = r.Begin()
+		isRollBack = true
 	}
-	for _, chain := range apiChains {
-		temp, ok := chains[chain.ApiId]
-		if !ok {
-			temp = make([]vo.ApiChainInfo, 0)
-		}
-		temp = append(temp, vo.ApiChainInfo{Chain: chain, Rules: rules[chain.ID], Method: *methodMap[chain.MethodId]})
-		chains[chain.ApiId] = temp
-	}
-	result := make([]*vo.ApiConfigInfo, 0, len(apiConfigs))
-	for _, config := range apiConfigs {
-		filter := filterMap[config.FilterId]
-		configInfo := new(vo.ApiConfigInfo)
-		configInfo.ApiConfig = config
-		configInfo.Filter = vo.ApiFilter{ApiFilter: filter, Method: *methodMap[filter.MethodId]}
-		configInfo.Chains = chains[config.ID]
-		result = append(result, configInfo)
-	}
-	return result
-}
-
-func (r *routerService) ListAll() ([]*vo.ApiConfigInfo, error) {
-	apiConfigs := make([]entry.ApiConfig, 0)
-	if err := r.Where("is_delete = 0").Find(&apiConfigs).Error; err != nil {
-		return nil, err
-	}
-	apiFilters := make([]entry.ApiFilter, 0)
-	if err := r.Where("is_delete = 0").Find(&apiFilters).Error; err != nil {
-		return nil, err
-	}
-	apiChains := make([]entry.ApiChain, 0)
-	if err := r.Where("is_delete = 0").Order("app_id, seq").Find(&apiChains).Error; err != nil {
-		return nil, err
-	}
-	apiResultRules := make([]entry.ApiResultRule, 0)
-	if err := r.Where("is_delete = 0").Order("chain_id, seq").Find(&apiResultRules).Error; err != nil {
-		return nil, err
-	}
-	return r.join(apiConfigs, apiFilters, apiChains, apiResultRules), nil
-}
-
-func (r *routerService) AddApiConfig(api *vo.ApiConfigInfo) error {
-	api.ApiConfig.UriHash = utils.Hash(api.ApiConfig.Uri)
-	tx := r.Begin()
-	if err := tx.Save(&(api.ApiConfig)).Error; err != nil {
-		tx.Rollback()
-		return err
-	}
-	if err := tx.Save(&(api.Filter)).Error; err != nil {
-		tx.Rollback()
-		return err
-	}
-	for _, c := range api.Chains {
-		chain := c.Chain
-		if err := tx.Save(&chain).Error; err != nil {
+	defer func() {
+		if isRollBack && err != nil {
 			tx.Rollback()
-			return err
 		}
-		length := len(c.Rules)
-		if length == 0 {
+	}()
+	apiChainMapping := map[int][]vo.ApiChainInfo{
+		entry.ChainFilter: apiConfig.FilterChains,
+		entry.ChainMethod: apiConfig.Chains,
+	}
+	for key, value := range apiChainMapping {
+		if len(value) == 0 {
 			continue
 		}
-		valueStrings := make([]string, 0, length)
-		valueArgs := make([]interface{}, 0, length)
-		for _, rule := range c.Rules {
-			valueStrings = append(valueStrings, fmt.Sprintf("(%d, %d, '%s', %d, '%s')", api.ApiConfig.ID,
-				chain.ID, rule.JavaClass, rule.Index, rule.Rule))
-		}
-		smt := "INSERT INTO d_api_result_rule(api_id, chain_id, java_class, `index`, rule) VALUES " + strings.Join(valueStrings, ",")
-		if err := tx.Exec(smt, valueArgs...).Error; err != nil {
-			tx.Rollback()
-			return err
+		for _, chain := range value {
+			chain.Chain.TypeId = key
+			if err = tx.Save(&(chain.Chain)).Error; err != nil {
+				return
+			}
+			length := len(chain.ParamMappings) + len(chain.ResultMapping)
+			valueStrings = make([]string, 0, length)
+			valueArgs = make([]interface{}, 0, length)
+			for _, mapping := range chain.ParamMappings {
+				valueStrings = append(valueStrings, fmt.Sprintf("(%d, %d, %d, %d, '%s')", apiConfig.ApiConfig.ID,
+					chain.Chain.ID, mapping.TypeId, mapping.ParamId, mapping.Explain))
+			}
+			for _, mapping := range chain.ResultMapping {
+				valueStrings = append(valueStrings, fmt.Sprintf("(%d, %d, %d, %d, '%s')", apiConfig.ApiConfig.ID,
+					chain.Chain.ID, mapping.TypeId, mapping.ParamId, mapping.Explain))
+			}
+			smt := "INSERT INTO d_api_param_mapping(api_id, chain_id, type_id, param_id, explain) VALUES " + strings.Join(valueStrings, ",")
+			if err = tx.Exec(smt, valueArgs...).Error; err != nil {
+				return
+			}
 		}
 	}
-	tx.Commit()
-	return nil
+	return
 }
 
-func (r *routerService) AddRouter(api *entry.ApiConfig) error {
-	api.UriHash = utils.Hash(api.Uri)
-	return r.Save(api).Error
-}
-
-func (r *routerService) DeleteRouter(apiId int64) error {
+func (r *routerService) DeleteConfig(configId int64) (err error) {
 	tx := r.Begin()
-	if err := tx.Model(&entry.ApiResultRule{}).Where("api_id = ?", apiId).UpdateColumn("is_delete", 1).Error;
-		err != nil {
-		tx.Rollback()
-		return err
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+	if err = tx.Delete(entry.ApiParamMapping{}, "api_id = ?", configId).Error; err != nil {
+		return
 	}
-	if err := tx.Model(&entry.ApiChain{}).Where("api_id = ?", apiId).UpdateColumn("is_delete", 1).Error;
-		err != nil {
-		tx.Rollback()
-		return err
-	}
-	if err := r.Model(&entry.ApiConfig{}).Where("id = ?").UpdateColumn("is_delete", 1).Error; err != nil {
-		tx.Rollback()
-		return err
-	}
-	tx.Commit()
-	return nil
+	return r.deleteConfigRelations(tx, configId)
 }
 
-func (r *routerService) ListRouterByUserId(userId int64) ([]entry.ApiConfig, error) {
-	result := make([]entry.ApiConfig, 0)
-	err := r.Where("user_id = ? AND is_delete = 0", userId).Find(&result).Error
-	return result, err
+func (r *routerService) deleteConfigRelations(tx *gorm.DB, configId int64) (err error) {
+	needRollBack := false
+	if tx == nil {
+		tx = r.Begin()
+		needRollBack = true
+	}
+	defer func() {
+		if needRollBack && err != nil {
+			tx.Rollback()
+		}
+	}()
+	if err = tx.Delete(entry.ApiChain{}, "api_id = ?", configId).Error; err != nil {
+		return
+	}
+	return tx.Delete(entry.ApiConfig{}, "id = ?", configId).Error
 }
 
 func NewRouterService(db *gorm.DB) service.RouterService {
