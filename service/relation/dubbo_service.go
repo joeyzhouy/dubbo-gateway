@@ -101,7 +101,16 @@ func (d *registryService) RegisterDetail(userId, registerId int64) (*entry.Regis
 	return reg, nil
 }
 
-func (d *registryService) AddRegistryConfig(config entry.Registry) error {
+func (d *registryService) AddRegistryConfig(config entry.Registry) (err error) {
+	defer func() {
+		if err == nil {
+			extension.GetConfigMode().Notify(extension.ModeEvent{
+				Domain: extension.Registry,
+				Type:   extension.Add,
+				Key:    config.ID,
+			})
+		}
+	}()
 	return d.Save(&config).Error
 }
 
@@ -127,6 +136,21 @@ func (d *registryService) ListRegistryByUser(userId int64) ([]entry.Registry, er
 type referenceService struct {
 	*gorm.DB
 	service.MethodService
+}
+
+func (r *referenceService) GetReferenceByApiId(apiId int64) ([]entry.Reference, error) {
+	var result []entry.Reference
+	err := r.Table("d_reference").
+		Select("d_reference.id, d_reference.registry_id, d_reference.protocol, d_reference.interface_name, d_reference.cluster").
+		Joins("JOIN d_api_chain on d_api_chain.reference_id = d_reference.id and d_api_chain.is_delete = 0").
+		Where("d_api_chain.api_id = ?", apiId).Find(&result).Error
+	return result, err
+}
+
+func (r *referenceService) GetReferenceEntryById(id int64) (*entry.Reference, error) {
+	result := new(entry.Reference)
+	err := r.Where("id = ?", id).Find(result).Error
+	return result, err
 }
 
 func (r *referenceService) GetByRegistryIdAndName(registryId int64, name string) ([]entry.Reference, error) {
@@ -201,11 +225,20 @@ func (r *referenceService) ListByUser(userId int64) ([]entry.Reference, error) {
 	return result, err
 }
 
-func (r *referenceService) AddReference(reference entry.Reference) error {
+func (r *referenceService) AddReference(reference entry.Reference) (err error) {
+	defer func() {
+		if err == nil {
+			extension.GetConfigMode().Notify(extension.ModeEvent{
+				Domain: extension.Reference,
+				Type:   extension.Add,
+				Key:    reference.ID,
+			})
+		}
+	}()
 	return r.Save(&reference).Error
 }
 
-func (r *referenceService) DeleteReference(id int64) error {
+func (r *referenceService) DeleteReference(id int64) (err error) {
 	var count int
 	if err := r.Model(&entry.Method{}).Where("reference_id = ? and is_delete = 0", id).Count(&count).Error; err != nil {
 		return err
@@ -213,6 +246,15 @@ func (r *referenceService) DeleteReference(id int64) error {
 	if count > 0 {
 		return errors.New("must delete method first")
 	}
+	defer func() {
+		if err == nil {
+			extension.GetConfigMode().Notify(extension.ModeEvent{
+				Domain: extension.Reference,
+				Type:   extension.Delete,
+				Key:    id,
+			})
+		}
+	}()
 	return r.Where("id = ?", id).Delete(entry.Reference{}).Error
 }
 
@@ -394,7 +436,7 @@ func (m *methodService) GetMethodDetailByMethod(me entry.Method) (*vo.Method, er
 	return temp[0], nil
 }
 
-func (m *methodService) AddMethod(method *vo.Method) error {
+func (m *methodService) AddMethod(method *vo.Method) (err error) {
 	relations := make([]entry.MethodParam, 0)
 	if method.Result != nil && method.Result.EntryId != 0 {
 		relations = append(relations, entry.MethodParam{
@@ -412,15 +454,20 @@ func (m *methodService) AddMethod(method *vo.Method) error {
 			})
 		}
 	}
-	var err error
 	tx := m.Begin()
 	defer func() {
 		if err != nil {
 			tx.Rollback()
+		} else {
+			extension.GetConfigMode().Notify(extension.ModeEvent{
+				Domain: extension.Method,
+				Type:   extension.Add,
+				Key:    method.Method.ID,
+			})
 		}
 	}()
 	if err = tx.Save(&method.Method).Error; err != nil {
-		return err
+		return
 	}
 	length := len(relations)
 	if length > 0 {
@@ -451,19 +498,25 @@ func (m *methodService) DeleteMethod(methodId int64) (err error) {
 	relations := make([]entry.MethodParam, 0)
 	err = m.Where("method_id = ?", methodId).Find(&relations).Error
 	if err != nil {
-		return err
+		return
 	}
 	tx := m.Begin()
 	defer func() {
 		if err != nil {
 			tx.Rollback()
+		} else {
+			extension.GetConfigMode().Notify(extension.ModeEvent{
+				Domain: extension.Method,
+				Type:   extension.Delete,
+				Key:    methodId,
+			})
 		}
 	}()
 	if err = tx.Delete(entry.Method{}, "id = ?", methodId).Error; err != nil {
-		return err
+		return
 	}
 	if err = tx.Delete(entry.MethodParam{}, "method_id = ?", methodId).Error; err != nil {
-		return err
+		return
 	}
 	tx.Commit()
 	if len(relations) > 0 {

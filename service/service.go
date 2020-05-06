@@ -28,7 +28,9 @@ type ReferenceService interface {
 	ListByUser(userId int64) ([]entry.Reference, error)
 	GetByIds(ids []int64) ([]entry.Reference, error)
 	GetReferenceById(id int64) (*vo.Reference, error)
+	GetReferenceEntryById(id int64) (*entry.Reference, error)
 	GetByRegistryIdAndName(registryId int64, name string) ([]entry.Reference, error)
+	GetReferenceByApiId(apiId int64) ([]entry.Reference, error)
 }
 
 type MethodService interface {
@@ -61,4 +63,7 @@ type RouterService interface {
 	DeleteConfig(configId int64) error
 	GetByConfigId(configId int64) (*vo.ApiConfigInfo, error)
 	ListAllAvailable() ([]*vo.ApiConfigInfo, error)
+	GetApiMethodNamesByReferenceId(referenceId int64) ([]string, error)
+	GetConfigById(configId int64) (*entry.ApiConfig, error)
+	GetApiIdsByMethodId(methodId int64) ([]int64, error)
 }

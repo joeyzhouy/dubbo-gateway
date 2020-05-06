@@ -1,6 +1,7 @@
 package vo
 
 import (
+	"dubbo-gateway/common"
 	"dubbo-gateway/service/entry"
 	"encoding/json"
 )
@@ -11,13 +12,13 @@ type ApiConfigInfo struct {
 	Chains       []ApiChainInfo  `json:"chains,omitempty"`
 }
 
-func (a *ApiConfigInfo) ConvertCache() (*ApiInfo, error) {
-	info := &ApiInfo{
+func (a *ApiConfigInfo) ConvertCache() (*common.ApiInfo, error) {
+	info := &common.ApiInfo{
 		ApiId:  a.ApiConfig.ID,
 		Method: a.ApiConfig.Method,
 	}
 	if len(a.FilterChains) > 0 {
-		var son *ApiChain
+		var son *common.ApiChain
 		for i := len(a.FilterChains) - 1; i >= 0; i-- {
 			temp, err := a.FilterChains[i].ConvertCache()
 			if err != nil {
@@ -31,7 +32,7 @@ func (a *ApiConfigInfo) ConvertCache() (*ApiInfo, error) {
 		info.FilterChain = son
 	}
 	if len(a.Chains) > 0 {
-		var son *ApiChain
+		var son *common.ApiChain
 		for i := len(a.Chains) - 1; i >= 0; i-- {
 			temp, err := a.FilterChains[i].ConvertCache()
 			if err != nil {
@@ -80,7 +81,7 @@ func (a *ApiConfigInfo) FillChains(chains []entry.ApiChain, mappings []entry.Api
 
 type ApiParamMapping struct {
 	entry.ApiParamMapping
-	*ApiParamExplain
+	common.ApiParamExplain
 }
 
 func (a *ApiParamMapping) U() error {
@@ -95,8 +96,7 @@ func (a *ApiParamMapping) U() error {
 	return nil
 }
 
-type ApiParamExplain struct {
-}
+
 
 type ApiChainInfo struct {
 	Chain         entry.ApiChain    `json:"chain,omitempty"`
@@ -104,11 +104,11 @@ type ApiChainInfo struct {
 	ResultMapping []ApiParamMapping `json:"resultMapping,omitempty"`
 }
 
-func (a *ApiChainInfo) ConvertCache() (*ApiChain, error) {
+func (a *ApiChainInfo) ConvertCache() (*common.ApiChain, error) {
 	//TODO
-	chain := &ApiChain{
+	chain := &common.ApiChain{
 		ReferenceId: a.Chain.ReferenceId,
-		ChainId: a.Chain.ID,
+		ChainId:     a.Chain.ID,
 		//MethodName: a.Chain.me
 	}
 	return chain, nil

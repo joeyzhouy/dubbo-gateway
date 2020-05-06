@@ -1,7 +1,6 @@
 package cache
 
 import (
-	"github.com/apache/dubbo-go/common/logger"
 	"github.com/apache/dubbo-go/config"
 	perrors "github.com/pkg/errors"
 	"sync"
@@ -31,7 +30,7 @@ func init() {
 type dubboReferenceCache map[string]*config.ReferenceConfig
 type dubboRegistryCache map[string]*config.RegistryConfig
 
-func AddRegistry(registryId string, registryConfig *config.RegistryConfig) {
+func addRegistry(registryId string, registryConfig *config.RegistryConfig) {
 	regCache[registryId] = registryConfig
 }
 
@@ -39,7 +38,7 @@ func getRegistry(registryId string) *config.RegistryConfig {
 	return regCache[registryId]
 }
 
-func AddReference(referenceId, identify string, referenceConfig *config.ReferenceConfig) error {
+func addReference(referenceId, identify string, referenceConfig *config.ReferenceConfig) error {
 	referLock.Lock()
 	defer referLock.Unlock()
 	if referenceConfig.Registry == "" {
@@ -49,7 +48,9 @@ func AddReference(referenceId, identify string, referenceConfig *config.Referenc
 		return perrors.Errorf("registry[%s] not found in cache", referenceConfig.Registry)
 	}
 	if _, ok := drCache[referenceId]; !ok {
-		referenceConfig.GenericLoad(referenceId)
+		if service := config.GetConsumerService(referenceId); service == nil {
+			referenceConfig.GenericLoad(referenceId)
+		}
 		drCache[referenceId] = referenceConfig
 	}
 	content, ok := referReference[referenceId]
@@ -61,7 +62,7 @@ func AddReference(referenceId, identify string, referenceConfig *config.Referenc
 	return nil
 }
 
-func GetReference(referenceId string) (*config.ReferenceConfig, error) {
+func getReference(referenceId string) (*config.ReferenceConfig, error) {
 	referLock.RLock()
 	defer referLock.RUnlock()
 	reference, ok := drCache[referenceId]
@@ -71,23 +72,49 @@ func GetReference(referenceId string) (*config.ReferenceConfig, error) {
 	return reference, nil
 }
 
-func RemoveReference(referenceId, identify string) {
+func modifyReference(referenceId string, referenceConfig *config.ReferenceConfig) {
 	referLock.Lock()
 	defer referLock.Unlock()
-	_, ok := drCache[referenceId]
-	if !ok {
-		logger.Warnf("remove reference[%s] with identify[%s], but not found reference", referenceId, identify)
-		return
-	}
+	referenceConfig.GenericLoad(referenceId)
+	drCache[referenceId] = referenceConfig
+}
+
+func removeAllReference(referenceId string) []string {
+	referLock.Lock()
+	defer referLock.Unlock()
+	var identifies []string
 	content, ok := referReference[referenceId]
-	if !ok {
-		logger.Warnf("remove reference[%s] with identify[%s], but not found identify", referenceId, identify)
-		return
+	if ok {
+		identifies = make([]string, 0, len(content))
+		index := 0
+		for key, _ := range content {
+			identifies[index] = key
+			index++
+		}
 	}
-	delete(content, identify)
-	if len(content) == 0 {
-		// release
-		delete(drCache, referenceId)
+	delete(drCache, referenceId)
+	return identifies
+}
+
+//func removeReference(referenceId, identify string) {
+//	removeReferences(map[string][]string{
+//		referenceId: {identify},
+//	})
+//}
+
+func removeReferences(referenceMap map[string][]string) {
+	referLock.Lock()
+	defer referLock.Unlock()
+	for referenceId, identifies := range referenceMap {
+		cacheIdentifies, ok := referReference[referenceId]
+		if ok {
+			for _, key := range identifies {
+				delete(cacheIdentifies, key)
+			}
+		}
+		if cacheIdentifies == nil || len(cacheIdentifies) == 0 {
+			delete(drCache, referenceId)
+		}
 	}
 }
 

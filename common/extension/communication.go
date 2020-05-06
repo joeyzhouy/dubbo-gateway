@@ -1,26 +1,31 @@
 package extension
 
-import "dubbo-gateway/common/config"
+import (
+	"dubbo-gateway/common"
+	"dubbo-gateway/common/config"
+	"sync"
+)
 
 const (
-	Add EventType = iota
+	AllType EventType = iota
+	Add
 	Modify
 	Delete
 )
 
 const (
-	Entry Domain = iota
-	Method
+	Method Domain = iota
 	Api
+	Registry
+	Reference
 )
 
 type Mode interface {
+	common.GatewayCache
 	Start()
-	Init() error
-	//Add(apiId int64) error
-	//Remove(apiId int64) error
-	//Refresh() error
 	Notify(event ModeEvent)
+	SubscribeEvent(domain Domain, eventType EventType, identify string, f func(event ModeEvent)) error
+	UnsubscribeEvent(domain Domain, eventType EventType, identify string)
 	Close()
 }
 
@@ -28,24 +33,34 @@ type EventType int
 type Domain int
 
 type ModeEvent struct {
-	Type   EventType
-	Domain Domain
-	Key    int64
+	Type        EventType
+	Domain      Domain
+	Key         int64
+	Attachments map[string]string
 }
 
 var modes = make(map[string]func(deploy *config.Deploy) (Mode, error))
+var onceMode sync.Once
+var configMode Mode
 
-func GetMode(mode string) (Mode, error) {
+func GetMode(mode string) Mode {
 	if modes[mode] == nil {
 		panic("mode for " + mode + " is not existing, make sure you have import the package.")
 	}
-	return modes[mode](config.GetDeployConfig())
+	m, err := modes[mode](config.GetDeployConfig())
+	if err != nil {
+		panic("create mode[" + mode + "] error: " + err.Error())
+	}
+	return m
 }
 
 func SetMode(mode string, v func(deploy *config.Deploy) (Mode, error)) {
 	modes[mode] = v
 }
 
-func GetConfigMode() (Mode, error) {
-	return GetMode(config.GetDeployConfig().Config.Model)
+func GetConfigMode() Mode {
+	onceMode.Do(func() {
+		configMode = GetMode(config.GetDeployConfig().Config.Model)
+	})
+	return configMode
 }

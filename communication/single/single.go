@@ -1,95 +1,78 @@
 package single
 
 import (
+	"dubbo-gateway/common"
 	"dubbo-gateway/common/config"
 	"dubbo-gateway/common/extension"
 	"dubbo-gateway/communication/cache"
-	"dubbo-gateway/service"
-	"dubbo-gateway/service/entry"
-	"dubbo-gateway/service/vo"
+	"fmt"
 	"github.com/apache/dubbo-go/common/logger"
-	dubboConfig "github.com/apache/dubbo-go/config"
-	perrors "github.com/pkg/errors"
-	"strconv"
+	"sync"
 )
 
 const SingleMode = "single"
 
 type singleMode struct {
-	service.RegisterService
-	service.ReferenceService
-	service.RouterService
-	apiCache *vo.ApiCache
+	common.GatewayCache
+	sync.RWMutex
+	sMap map[string]map[string]func(mode extension.ModeEvent)
 }
 
-func (s *singleMode) Init() error {
-	registries, err := s.RegisterService.ListAll()
-	if err != nil {
-		return perrors.Errorf("get registries error: %v", err)
+func (s *singleMode) UnsubscribeEvent(domain extension.Domain, eventType extension.EventType, identify string) {
+	key := getKey(domain, eventType)
+	eventMap, ok := s.sMap[key]
+	if ok {
+		delete(eventMap, identify)
+		s.sMap[key] = eventMap
 	}
-	for _, registry := range registries {
-		cache.AddRegistry(strconv.FormatInt(registry.ID, 10), &dubboConfig.RegistryConfig{
-			Protocol:   registry.Protocol,
-			TimeoutStr: registry.Timeout,
-			Address:    registry.Address,
-			Username:   registry.UserName,
-			Password:   registry.Password,
-		})
+}
+
+func (s *singleMode) SubscribeEvent(domain extension.Domain, eventType extension.EventType,
+	identify string, f func(event extension.ModeEvent)) error {
+	key := getKey(domain, eventType)
+	eventMap, ok := s.sMap[key]
+	if !ok {
+		eventMap = make(map[string]func(extension.ModeEvent))
 	}
-	cache.RefreshConsumerConfig()
-	references, err := s.ReferenceService.ListAll()
-	if err != nil {
-		return err
-	}
-	referenceMap := make(map[int64]entry.Reference)
-	for _, reference := range references {
-		referenceMap[reference.ID] = reference
-	}
-	apiConfigInfos, err := s.RouterService.ListAllAvailable()
-	if err != nil {
-		return err
-	}
-	apiMaps := make(map[string]*vo.ApiInfo)
-	for _, apiConfigInfo := range apiConfigInfos {
-		info, err := apiConfigInfo.ConvertCache()
-		if err != nil {
-			return err
-		}
-		apiMaps[info.Method] = info
-		for chain := info.FilterChain; chain != nil; chain = chain.Next {
-			ref, ok := referenceMap[chain.ReferenceId]
-			if !ok {
-				return perrors.Errorf("not found reference config with Id: %d", chain.ReferenceId)
-			}
-			err = cache.AddReference(strconv.FormatInt(chain.ReferenceId, 10),
-				strconv.FormatInt(chain.ChainId, 10), &dubboConfig.ReferenceConfig{
-					Protocol:      ref.Protocol,
-					Cluster:       ref.Cluster,
-					Registry:      strconv.FormatInt(ref.RegistryId, 10),
-					InterfaceName: ref.InterfaceName,
-					Generic:       true,
-				})
-			if err != nil {
-				return err
-			}
-		}
-	}
-	s.apiCache = &vo.ApiCache{
-		Mappings: apiMaps,
-	}
+	eventMap[identify] = f
 	return nil
 }
 
+func getKey(domain extension.Domain, eventType extension.EventType) string {
+	return fmt.Sprintf("%d-%d", domain, eventType)
+}
+
+func (*singleMode) Start() {
+	logger.Info("single mode start")
+}
+
 func (s *singleMode) Notify(event extension.ModeEvent) {
-	panic("implement me")
+	go func() {
+		var (
+			key1 string
+			key2 string
+		)
+		key1 = getKey(event.Domain, event.Type)
+		key2 = getKey(event.Domain, extension.AllType)
+		eventMap, ok := s.sMap[key1]
+		if ok {
+			for _, f := range eventMap {
+				f(event)
+			}
+		}
+		if key1 != key2 {
+			eventMap, ok = s.sMap[key2]
+			if ok {
+				for _, f := range eventMap {
+					f(event)
+				}
+			}
+		}
+	}()
 }
 
-func (s *singleMode) Close() {
+func (*singleMode) Close() {
 	logger.Info("single mode close")
-}
-
-func (s *singleMode) Start() {
-	logger.Info("start single mode")
 }
 
 func init() {
@@ -97,14 +80,14 @@ func init() {
 }
 
 func newSingleMode(deploy *config.Deploy) (extension.Mode, error) {
-	meta := extension.GetMeta()
 	mode := &singleMode{
-		RegisterService:  meta.NewRegisterService(),
-		ReferenceService: meta.NewReferenceService(),
-		RouterService:    meta.NewRouterService(),
+		sMap: make(map[string]map[string]func(extension.ModeEvent)),
 	}
-	if err := mode.Init(); err != nil {
+	gatewayCache, err := cache.NewLocalCache(mode)
+	if err != nil {
 		return nil, err
 	}
+	mode.GatewayCache = gatewayCache
+
 	return mode, nil
 }

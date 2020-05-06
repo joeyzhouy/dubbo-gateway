@@ -1,10 +1,12 @@
 package relation
 
 import (
+	"dubbo-gateway/common/extension"
 	"dubbo-gateway/service"
 	"dubbo-gateway/service/entry"
 	"dubbo-gateway/service/vo"
 	"fmt"
+	"github.com/apache/dubbo-go/common/logger"
 	"github.com/go-errors/errors"
 	"github.com/jinzhu/gorm"
 	"strings"
@@ -15,10 +17,47 @@ type routerService struct {
 	service.MethodService
 }
 
-func (r *routerService) ModifyConfigStatus(configId int64, status int) error {
-	err := r.Where("id = ?", configId).UpdateColumn("status", status).Error
-	// TODO notify cache
-	return err
+func (r *routerService) GetApiIdsByMethodId(methodId int64) ([]int64, error) {
+	var result []int64
+	err := r.Table("d_api_config").
+		Select("distinct(d_api_config.id)").
+		Joins("JOIN d_api_chain on d_api_chain.api_id = d_api_config.id and d_api_chain.is_delete = 0").
+		Where("d_api_chain.method_id = ?", methodId).Scan(&result).Error
+	if err != nil && err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	return result, err
+}
+
+func (r *routerService) GetConfigById(configId int64) (*entry.ApiConfig, error) {
+	result := new(entry.ApiConfig)
+	err := r.Where("id = ?", configId).Find(result).Error
+	return result, err
+}
+
+func (r *routerService) GetApiMethodNamesByReferenceId(referenceId int64) ([]string, error) {
+	var result []string
+	err := r.Table("d_api_config").
+		Select("distinct(d_api_config.method)").
+		Joins("JOIN d_api_chain on d_api_chain.api_id = d_api_config.id").
+		Where("d_api_chain.reference_id = ?", referenceId).Scan(&result).Error
+	if err != nil && err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	return result, err
+}
+
+func (r *routerService) ModifyConfigStatus(configId int64, status int) (err error) {
+	defer func() {
+		if err == nil && status == entry.Available {
+			extension.GetConfigMode().Notify(extension.ModeEvent{
+				Domain: extension.Api,
+				Type:   extension.Add,
+				Key:    configId,
+			})
+		}
+	}()
+	return r.Where("id = ?", configId).UpdateColumn("status", status).Error
 }
 
 func (r *routerService) UpdateConfig(apiConfig *vo.ApiConfigInfo) (err error) {
@@ -26,6 +65,19 @@ func (r *routerService) UpdateConfig(apiConfig *vo.ApiConfigInfo) (err error) {
 	defer func() {
 		if err != nil {
 			tx.Rollback()
+		} else {
+			apiConfigDB, err := r.GetConfigById(apiConfig.ApiConfig.ID)
+			if err != nil {
+				logger.Errorf("UpdateConfig.GetConfigById[%d], error: %v", apiConfig.ApiConfig.ID, err)
+				return
+			}
+			if apiConfigDB.Status == entry.Available {
+				extension.GetConfigMode().Notify(extension.ModeEvent{
+					Domain: extension.Api,
+					Type:   extension.Modify,
+					Key:    apiConfig.ApiConfig.ID,
+				})
+			}
 		}
 	}()
 	if err = r.deleteConfigRelations(tx, apiConfig.ApiConfig.ID); err != nil {
@@ -123,6 +175,12 @@ func (r *routerService) AddConfig(apiConfig *vo.ApiConfigInfo) (err error) {
 	defer func() {
 		if err != nil {
 			tx.Rollback()
+		} else if apiConfig.ApiConfig.Status == entry.Available {
+			extension.GetConfigMode().Notify(extension.ModeEvent{
+				Domain: extension.Api,
+				Type:   extension.Add,
+				Key:    apiConfig.ApiConfig.ID,
+			})
 		}
 	}()
 	if err = tx.Save(&(apiConfig.ApiConfig)).Error; err != nil {
@@ -192,6 +250,12 @@ func (r *routerService) DeleteConfig(configId int64) (err error) {
 	defer func() {
 		if err != nil {
 			tx.Rollback()
+		} else {
+			extension.GetConfigMode().Notify(extension.ModeEvent{
+				Domain: extension.Api,
+				Type:   extension.Delete,
+				Key:    configId,
+			})
 		}
 	}()
 	if err = tx.Delete(entry.ApiParamMapping{}, "api_id = ?", configId).Error; err != nil {

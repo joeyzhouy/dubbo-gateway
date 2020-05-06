@@ -42,5 +42,14 @@ const (
 	ApiSearchInfo       = ApiSearchRoot + "/%d"
 
 	ProtocolZookeeper = "zookeeper"
-	ProtocolDubbo = "dubbo"
+	ProtocolDubbo     = "dubbo"
+
+	RouterHeaderKey     = "_header"
+	RouterBodyKey       = "_body"
+	RouterQueryKey      = "_query"
+	RouterRequestMethod = "_method"
+	CustomKey           = "_consumeKey"
+
+	ResultChainFilterPrefix = "_fr"
+	ResultChainMethodPrefix = "_mr"
 )
