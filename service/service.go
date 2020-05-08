@@ -63,7 +63,15 @@ type RouterService interface {
 	DeleteConfig(configId int64) error
 	GetByConfigId(configId int64) (*vo.ApiConfigInfo, error)
 	ListAllAvailable() ([]*vo.ApiConfigInfo, error)
+	ListAllAvailableEntry() ([]*entry.ApiConfig, error)
 	GetApiMethodNamesByReferenceId(referenceId int64) ([]string, error)
 	GetConfigById(configId int64) (*entry.ApiConfig, error)
 	GetApiIdsByMethodId(methodId int64) ([]int64, error)
+	SearchByMethodName(methodName string) ([]entry.ApiConfig, error)
+
+	AddFilter(filter *vo.ApiFilterInfo) error
+	ModifyFilter(filter *vo.ApiFilterInfo) error
+	DeleterFilter(filterId int64) error
+	ListFilters() ([]entry.ApiFilter, error)
+	GetFilter(filterId int64) (*vo.ApiFilterInfo, error)
 }

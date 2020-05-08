@@ -13,11 +13,11 @@ const (
 
 type ApiConfig struct {
 	Base
-	UserId int64  `gorm:"column:user_id" json:"userId,omitempty"`
-	Desc   string `gorm:"column:desc" json:"desc,omitempty"`
-	Method string `gorm:"column:method" json:"method,omitempty"`
-	Status int    `gorm:"column:status" json:"status,omitempty"`
-	//UriHash  string `gorm:"column:uri_hash" json:"uriHash"`
+	UserId   int64  `gorm:"column:user_id" json:"userId,omitempty"`
+	Desc     string `gorm:"column:desc" json:"desc,omitempty"`
+	Method   string `gorm:"column:method" json:"method,omitempty"`
+	FilterId int64  `gorm:"column:filter_id" json:"filterId,omitempty"`
+	Status   int    `gorm:"column:status" json:"status,omitempty"`
 }
 
 func (ApiConfig) TableName() string {
@@ -26,8 +26,8 @@ func (ApiConfig) TableName() string {
 
 type ApiChain struct {
 	Base
-	ApiId       int64 `gorm:"column:api_id" json:"apiId,omitempty"`
-	TypeId      int   `gorm:"column:type_id" json:"typeId,omitempty"`
+	ApiId int64 `gorm:"column:api_id" json:"apiId,omitempty"`
+	//TypeId      int   `gorm:"column:type_id" json:"typeId,omitempty"`
 	ReferenceId int64 `gorm:"column:reference_id" json:"referenceId,omitempty"`
 	MethodId    int64 `gorm:"column:method_id" json:"methodId,omitempty"`
 	Seq         int   `gorm:"column:seq" json:"seq,omitempty"`
@@ -37,14 +37,25 @@ func (ApiChain) TableName() string {
 	return "d_api_chain"
 }
 
+type ApiFilter struct {
+	Base
+	Name        string `gorm:"column:name" json:"name,omitempty"`
+	Desc        string `gorm:"column:desc" json:"desc,omitempty"`
+	ReferenceId int64  `gorm:"column:reference_id" json:"referenceId,omitempty"`
+	MethodId    int64  `gorm:"column:method_id" json:"methodId,omitempty"`
+}
+
+func (ApiFilter) TableName() string {
+	return "d_api_filter"
+}
+
 type ApiParamMapping struct {
 	Base
-	ApiId   int64 `gorm:"column:api_id" json:"apiId"`
-	ChainId int64 `gorm:"column:chain_id" json:"chainId"`
-	TypeId  int   `gorm:"column:type_id" json:"typeId,omitempty"`
-	ParamId int64 `gorm:"column:param_id" json:"paramId"`
-	//Path    string `gorm:"column:path" json:"path"`
-	Explain string `gorm:"column:explain" json:"explain"`
+	ApiId   int64  `gorm:"column:api_id" json:"apiId"`
+	ChainId int64  `gorm:"column:chain_id" json:"chainId"`
+	TypeId  int    `gorm:"column:type_id" json:"typeId,omitempty"`
+	Index   int    `gorm:"column:index" json:"index,omitempty"`
+	Explain string `gorm:"column:explain"`
 }
 
 func (ApiParamMapping) TableName() string {

@@ -129,6 +129,14 @@ type referenceService struct {
 	conn *zk.Conn
 }
 
+func (r *referenceService) GetReferenceEntryById(id int64) (*entry.Reference, error) {
+	panic("implement me")
+}
+
+func (r *referenceService) GetReferenceByApiId(apiId int64) ([]entry.Reference, error) {
+	panic("implement me")
+}
+
 func (r *referenceService) GetByRegistryIdAndName(registryId int64, name string) ([]entry.Reference, error) {
 	panic("implement me")
 }

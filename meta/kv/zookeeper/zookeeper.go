@@ -56,12 +56,13 @@ func (z *metaZookeeper) NewCommonService() service.CommonService {
 }
 
 func (z *metaZookeeper) NewRouterService() service.RouterService {
-	if conn, ch, err := z.createZkConn(); err != nil {
-		logger.Errorf("create meta[zookeeper] error: %v", err)
-		return nil
-	} else {
-		return zookeeper.NewRouterService(conn, ch)
-	}
+	//if conn, ch, err := z.createZkConn(); err != nil {
+	//	logger.Errorf("create meta[zookeeper] error: %v", err)
+	//	return nil
+	//} else {
+	//	return zookeeper.NewRouterService(conn, ch)
+	//}
+	return nil
 }
 
 func (z *metaZookeeper) NewReferenceService() service.ReferenceService {

@@ -5,6 +5,8 @@ import (
 	"dubbo-gateway/common/config"
 	"dubbo-gateway/common/extension"
 	"dubbo-gateway/communication/cache"
+	_ "dubbo-gateway/meta/kv/zookeeper"
+	_ "dubbo-gateway/meta/relation/mysql"
 	"fmt"
 	"github.com/apache/dubbo-go/common/logger"
 	"sync"

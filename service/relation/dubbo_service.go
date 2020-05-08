@@ -383,12 +383,12 @@ func (m *methodService) GetMethodDetailByMethods(methods []entry.Method) ([]*vo.
 	paramMap := make(map[int64]map[int64]entry.MethodParam)
 	entryIds = make([]int64, 0)
 	for _, p := range params {
-		temp, ok := paramMap[p.EntryId]
+		temp, ok := paramMap[p.MethodId]
 		if !ok {
 			temp = make(map[int64]entry.MethodParam)
 		}
 		temp[p.ID] = p
-		paramMap[p.EntryId] = temp
+		paramMap[p.MethodId] = temp
 		entryIds = append(entryIds, p.EntryId)
 	}
 	entryMap := make(map[int64]*entry.EntryStructure)
@@ -424,6 +424,7 @@ func (m *methodService) GetMethodDetailByMethods(methods []entry.Method) ([]*vo.
 				}
 			}
 		}
+		result = append(result, ms)
 	}
 	return result, nil
 }

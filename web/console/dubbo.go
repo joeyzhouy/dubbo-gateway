@@ -252,8 +252,7 @@ func (d *dubboController) DeleteRegister(ctx *gin.Context) {
 func (d *dubboController) AddMethod(ctx *gin.Context) {
 	method := new(vo.Method)
 	if utils.IsErrorEmpty(ctx.ShouldBindJSON(method), ctx) {
-		if method.MethodName == "" || method.ReferenceId == 0 ||
-			len(method.Params) == 0 {
+		if method.MethodName == "" || method.ReferenceId == 0{
 			utils.ParamMissResponseOperation(ctx)
 			return
 		}

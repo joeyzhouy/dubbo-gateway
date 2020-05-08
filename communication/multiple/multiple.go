@@ -8,13 +8,9 @@ import (
 	"dubbo-gateway/common/utils"
 	"dubbo-gateway/communication/single"
 	"dubbo-gateway/registry"
-	"encoding/json"
 	"fmt"
 	"github.com/apache/dubbo-go/common/logger"
 	"github.com/gin-gonic/gin"
-	"io/ioutil"
-	"net/http"
-	"strconv"
 	"sync"
 )
 
@@ -38,6 +34,26 @@ type multipleMode struct {
 	single    extension.Mode
 	retry     int
 	sync.RWMutex
+}
+
+func (m *multipleMode) Start() {
+	panic("implement me")
+}
+
+func (m *multipleMode) Invoke(method string, params map[string]interface{}) (interface{}, error) {
+	panic("implement me")
+}
+
+func (m *multipleMode) Notify(event extension.ModeEvent) {
+	panic("implement me")
+}
+
+func (m *multipleMode) SubscribeEvent(domain extension.Domain, eventType extension.EventType, identify string, f func(event extension.ModeEvent)) error {
+	panic("implement me")
+}
+
+func (m *multipleMode) UnsubscribeEvent(domain extension.Domain, eventType extension.EventType, identify string) {
+	panic("implement me")
 }
 
 func (m *multipleMode) Close() {
@@ -70,120 +86,120 @@ func (m *multipleMode) getIps() []string {
 	return result
 }
 
-func (m *multipleMode) Add(apiId int64) error {
-	if err := m.single.Add(apiId); err != nil {
-		return err
-	}
-	return m.notify(func(address string) string {
-		return fmt.Sprintf(addUrl, address, apiId)
-	}, func() error {
-		return m.Remove(apiId)
-	})
-}
-
-func (m *multipleMode) notify(getUrl func(string) string, callBack func() error) error {
-	addresses := m.getAddresses()
-	for i := m.retry; i > 0; i-- {
-		ch := make(chan kv, len(addresses))
-		for _, address := range addresses {
-			go func(c <-chan kv, address string) {
-				request := getUrl(address)
-				resp, err := http.Get(request)
-				if err != nil {
-					logger.Errorf("requestUrl: %s, error: %v", request, err)
-					ch <- kv{key: address, value: failed}
-					return
-				}
-				defer resp.Body.Close()
-				if resp.StatusCode != 200 {
-					logger.Errorf("requestUrl: %s, statusCode: %d", request, resp.StatusCode)
-					ch <- kv{key: address, value: failed}
-					return
-				}
-				bs, err := ioutil.ReadAll(resp.Body)
-				if err != nil {
-					logger.Errorf("requestUrl: %s, read request body error: %v", request, err)
-					ch <- kv{key: address, value: failed}
-					return
-				}
-				data := new(utils.Response)
-				err = json.Unmarshal(bs, data)
-				if err != nil {
-					logger.Errorf("requestUrl: %s, json umarshal request body: %s error: %v", request, string(bs), err)
-					ch <- kv{key: address, value: failed}
-					return
-				}
-				if data.Code != utils.Success {
-					ch <- kv{key: address, value: failed}
-					return
-				}
-				ch <- kv{key: address, value: success}
-			}(ch, address)
-		}
-		temp := make([]string, 0)
-		for i := 0; i < len(addresses); i++ {
-			if result := <-ch; result.value != success {
-				temp = append(temp, result.key)
-			}
-		}
-		close(ch)
-		if len(temp) == 0 {
-			break
-		}
-		addresses = temp
-	}
-	if len(addresses) == 0 {
-		return nil
-	}
-	if callBack != nil {
-		return callBack()
-	}
-	return nil
-}
-
-func (m *multipleMode) Remove(apiId int64) error {
-	if err := m.single.Remove(apiId); err != nil {
-		return err
-	}
-	return m.notify(func(address string) string {
-		return fmt.Sprintf(removeUrl, address, apiId)
-	}, nil)
-}
-
-func (m *multipleMode) Refresh() error {
-	return m.notify(func(address string) string {
-		return fmt.Sprintf(refreshUrl, address)
-	}, nil)
-}
-
-func (m *multipleMode) Start() {
-	m.authGroup.GET("/add", func(ctx *gin.Context) {
-		if str := ctx.Param("apiId"); str != "" {
-			if apiId, err := strconv.ParseInt(str, 10, 64); utils.IsErrorEmpty(err, ctx) {
-				utils.OperateResponse(nil, m.single.Add(apiId), ctx)
-			}
-			return
-		}
-		utils.ParamMissResponseOperation(ctx)
-	})
-	m.authGroup.GET("/remove", func(ctx *gin.Context) {
-		if str := ctx.Param("apiId"); str != "" {
-			if apiId, err := strconv.ParseInt(str, 10, 64); utils.IsErrorEmpty(err, ctx) {
-				utils.OperateResponse(nil, m.single.Remove(apiId), ctx)
-			}
-			return
-		}
-		utils.ParamMissResponseOperation(ctx)
-	})
-	m.authGroup.GET("/refresh", func(ctx *gin.Context) {
-		utils.OperateResponse(nil, m.single.Refresh(), ctx)
-	})
-	go m.r.Run(fmt.Sprintf(":%d", m.port))
-}
-
-func init() {
-	extension.SetMode(MultipleMode, newMultipleMode)
-}
+//func (m *multipleMode) Add(apiId int64) error {
+//	if err := m.single.Add(apiId); err != nil {
+//		return err
+//	}
+//	return m.notify(func(address string) string {
+//		return fmt.Sprintf(addUrl, address, apiId)
+//	}, func() error {
+//		return m.Remove(apiId)
+//	})
+//}
+//
+//func (m *multipleMode) notify(getUrl func(string) string, callBack func() error) error {
+//	addresses := m.getAddresses()
+//	for i := m.retry; i > 0; i-- {
+//		ch := make(chan kv, len(addresses))
+//		for _, address := range addresses {
+//			go func(c <-chan kv, address string) {
+//				request := getUrl(address)
+//				resp, err := http.Get(request)
+//				if err != nil {
+//					logger.Errorf("requestUrl: %s, error: %v", request, err)
+//					ch <- kv{key: address, value: failed}
+//					return
+//				}
+//				defer resp.Body.Close()
+//				if resp.StatusCode != 200 {
+//					logger.Errorf("requestUrl: %s, statusCode: %d", request, resp.StatusCode)
+//					ch <- kv{key: address, value: failed}
+//					return
+//				}
+//				bs, err := ioutil.ReadAll(resp.Body)
+//				if err != nil {
+//					logger.Errorf("requestUrl: %s, read request body error: %v", request, err)
+//					ch <- kv{key: address, value: failed}
+//					return
+//				}
+//				data := new(utils.Response)
+//				err = json.Unmarshal(bs, data)
+//				if err != nil {
+//					logger.Errorf("requestUrl: %s, json umarshal request body: %s error: %v", request, string(bs), err)
+//					ch <- kv{key: address, value: failed}
+//					return
+//				}
+//				if data.Code != utils.Success {
+//					ch <- kv{key: address, value: failed}
+//					return
+//				}
+//				ch <- kv{key: address, value: success}
+//			}(ch, address)
+//		}
+//		temp := make([]string, 0)
+//		for i := 0; i < len(addresses); i++ {
+//			if result := <-ch; result.value != success {
+//				temp = append(temp, result.key)
+//			}
+//		}
+//		close(ch)
+//		if len(temp) == 0 {
+//			break
+//		}
+//		addresses = temp
+//	}
+//	if len(addresses) == 0 {
+//		return nil
+//	}
+//	if callBack != nil {
+//		return callBack()
+//	}
+//	return nil
+//}
+//
+//func (m *multipleMode) Remove(apiId int64) error {
+//	if err := m.single.Remove(apiId); err != nil {
+//		return err
+//	}
+//	return m.notify(func(address string) string {
+//		return fmt.Sprintf(removeUrl, address, apiId)
+//	}, nil)
+//}
+//
+//func (m *multipleMode) Refresh() error {
+//	return m.notify(func(address string) string {
+//		return fmt.Sprintf(refreshUrl, address)
+//	}, nil)
+//}
+//
+//func (m *multipleMode) Start() {
+//	m.authGroup.GET("/add", func(ctx *gin.Context) {
+//		if str := ctx.Param("apiId"); str != "" {
+//			if apiId, err := strconv.ParseInt(str, 10, 64); utils.IsErrorEmpty(err, ctx) {
+//				utils.OperateResponse(nil, m.single.Add(apiId), ctx)
+//			}
+//			return
+//		}
+//		utils.ParamMissResponseOperation(ctx)
+//	})
+//	m.authGroup.GET("/remove", func(ctx *gin.Context) {
+//		if str := ctx.Param("apiId"); str != "" {
+//			if apiId, err := strconv.ParseInt(str, 10, 64); utils.IsErrorEmpty(err, ctx) {
+//				utils.OperateResponse(nil, m.single.Remove(apiId), ctx)
+//			}
+//			return
+//		}
+//		utils.ParamMissResponseOperation(ctx)
+//	})
+//	m.authGroup.GET("/refresh", func(ctx *gin.Context) {
+//		utils.OperateResponse(nil, m.single.Refresh(), ctx)
+//	})
+//	go m.r.Run(fmt.Sprintf(":%d", m.port))
+//}
+//
+//func init() {
+//	extension.SetMode(MultipleMode, newMultipleMode)
+//}
 
 func newMultipleMode(deploy *config.Deploy) (extension.Mode, error) {
 	mode := new(multipleMode)
@@ -194,10 +210,7 @@ func newMultipleMode(deploy *config.Deploy) (extension.Mode, error) {
 	mode.port = mConfig.Port
 	mode.retry = mConfig.Retry
 	var err error
-	mode.single, err = extension.GetMode(single.SingleMode)
-	if err != nil {
-		return nil, err
-	}
+	mode.single = extension.GetMode(single.SingleMode)
 	mode.reg, err = extension.GetRegistry(mConfig.Coordination.Protocol)
 	if err != nil {
 		return nil, err

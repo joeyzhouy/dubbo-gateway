@@ -162,24 +162,29 @@ func (e *entryService) batchRelation(entryId int64, ids []int64, tx *gorm.DB) er
 
 var EntryAlreadyUsedError = errors.New("entry already used")
 
-func (e *entryService) DeleteEntry(id int64) error {
+func (e *entryService) DeleteEntry(id int64) (err error) {
 	relation := new(entry.EntryRelation)
-	err := e.Where("refer_id = ?", id).Find(relation).Error
+	err = e.Where("refer_id = ?", id).Find(relation).Error
 	if err == nil && relation.ID > 0 {
 		return EntryAlreadyUsedError
 	} else if err != nil && err != gorm.ErrRecordNotFound {
 		return err
+	} else {
+		err = nil
 	}
 	tx := e.Begin()
 	defer func() {
 		if err != nil {
 			tx.Rollback()
+		} else {
+
 		}
 	}()
 	if err = tx.Delete(entry.EntryRelation{}, "entry_id = ?", id).Error; err != nil {
 		return err
 	}
-	return tx.Delete(entry.Entry{}, "id = ?", id).Error
+	err = tx.Delete(entry.Entry{}, "id = ?", id).Error
+	return err
 }
 
 func (e *entryService) GetEntry(id int64) (*entry.EntryStructure, error) {

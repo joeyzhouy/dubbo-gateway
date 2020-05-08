@@ -7,9 +7,9 @@ import (
 )
 
 type ApiConfigInfo struct {
-	ApiConfig    entry.ApiConfig `json:"config,omitempty"`
-	FilterChains []ApiChainInfo  `json:"filters,omitempty"`
-	Chains       []ApiChainInfo  `json:"chains,omitempty"`
+	ApiConfig entry.ApiConfig `json:"config,omitempty"`
+	Filter    *ApiFilterInfo   `json:"filters,omitempty"`
+	Chains    []*ApiChainInfo  `json:"chains,omitempty"`
 }
 
 func (a *ApiConfigInfo) ConvertCache() (*common.ApiInfo, error) {
@@ -34,7 +34,7 @@ func (a *ApiConfigInfo) ConvertCache() (*common.ApiInfo, error) {
 	if len(a.Chains) > 0 {
 		var son *common.ApiChain
 		for i := len(a.Chains) - 1; i >= 0; i-- {
-			temp, err := a.FilterChains[i].ConvertCache()
+			temp, err := a.Chains[i].ConvertCache()
 			if err != nil {
 				return nil, err
 			}
@@ -81,10 +81,18 @@ func (a *ApiConfigInfo) FillChains(chains []entry.ApiChain, mappings []entry.Api
 
 type ApiParamMapping struct {
 	entry.ApiParamMapping
-	common.ApiParamExplain
+	common.ApiParamExplain `json:"explain"`
 }
 
-func (a *ApiParamMapping) U() error {
+func (a *ApiParamMapping) Unmarshal() error {
+	return nil
+}
+
+func (a *ApiParamMapping) Marshall() error {
+	return nil
+}
+
+func (a *ApiParamMapping) convert() error {
 	if a.ApiParamExplain == nil {
 		return nil
 	}
@@ -96,12 +104,10 @@ func (a *ApiParamMapping) U() error {
 	return nil
 }
 
-
-
 type ApiChainInfo struct {
 	Chain         entry.ApiChain    `json:"chain,omitempty"`
-	ParamMappings []ApiParamMapping `json:"paramMappings,omitempty"`
-	ResultMapping []ApiParamMapping `json:"resultMapping,omitempty"`
+	ParamMappings []*ApiParamMapping `json:"paramMappings,omitempty"`
+	ResultMapping *ApiParamMapping `json:"resultMapping,omitempty"`
 }
 
 func (a *ApiChainInfo) ConvertCache() (*common.ApiChain, error) {
@@ -114,23 +120,61 @@ func (a *ApiChainInfo) ConvertCache() (*common.ApiChain, error) {
 	return chain, nil
 }
 
-func (a *ApiChainInfo) FillMappings(mappings []entry.ApiParamMapping) error {
-	if len(mappings) == 0 {
-		return nil
-	}
-	paramMapping := make([]ApiParamMapping, 0)
-	resultMapping := make([]ApiParamMapping, 0)
-	for _, mapping := range mappings {
-		apiParamMapping := ApiParamMapping{
-			ApiParamMapping: mapping,
+//func (a *ApiChainInfo) FillMappings(mappings []entry.ApiParamMapping) error {
+//	if len(mappings) == 0 {
+//		return nil
+//	}
+//	paramMapping := make([]ApiParamMapping, 0)
+//	resultMapping := make([]ApiParamMapping, 0)
+//	for _, mapping := range mappings {
+//		apiParamMapping := ApiParamMapping{
+//			ApiParamMapping: mapping,
+//		}
+//		if err := (&apiParamMapping).convert(); err != nil {
+//			return err
+//		}
+//		if mapping.TypeId == entry.ParamMapping {
+//			paramMapping = append(paramMapping, apiParamMapping)
+//		} else if mapping.TypeId == entry.ResultMapping {
+//			resultMapping = append(resultMapping, apiParamMapping)
+//		}
+//	}
+//	a.ParamMappings = paramMapping
+//	a.ResultMapping = resultMapping
+//	return nil
+//}
+
+func (a *ApiChainInfo) Unmarshal() error {
+	return nil
+}
+
+func (a *ApiChainInfo) Marshal() error {
+	return nil
+}
+
+type ApiFilterInfo struct {
+	Filter        entry.ApiFilter    `json:"filter,omitempty"`
+	ParamMappings []*ApiParamMapping `json:"paramMappings,omitempty"`
+}
+
+func (a *ApiFilterInfo) Unmarshal() error {
+	if len(a.ParamMappings) > 0 {
+		for _, mapping := range a.ParamMappings {
+			if err := mapping.Unmarshal(); err != nil {
+				return err
+			}
 		}
-		if mapping.TypeId == entry.ParamMapping {
-			paramMapping = append(paramMapping, apiParamMapping)
-		} else if mapping.TypeId == entry.ResultMapping {
-			resultMapping = append(resultMapping, apiParamMapping)
+	}
+	return nil
+}
+
+func (a *ApiFilterInfo) Marshall() error {
+	if len(a.ParamMappings) > 0 {
+		for _, mapping := range a.ParamMappings {
+			if err := mapping.Marshall(); err != nil {
+				return err
+			}
 		}
 	}
-	a.ParamMappings = paramMapping
-	a.ResultMapping = resultMapping
 	return nil
 }

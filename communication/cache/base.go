@@ -236,7 +236,7 @@ func NewLocalCache(mode extension.Mode) (common.GatewayCache, error) {
 	}
 	err := cache.init()
 	if err != nil {
-		panic("create local cache error")
+		panic("create local cache error:" + err.Error())
 	}
 	if err = mode.SubscribeEvent(extension.Registry, extension.AllType, baseKey, newRegistryOperator(cache)); err != nil {
 		return nil, err

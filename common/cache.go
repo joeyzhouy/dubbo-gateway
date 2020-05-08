@@ -12,7 +12,7 @@ const (
 	SelfKey = "_self"
 )
 
-var parsing map[string]func(key string, param map[string]interface{}) (interface{}, error)
+var parsing = make(map[string]func(key string, param map[string]interface{}) (interface{}, error))
 
 func init() {
 	parsing[constant.RouterHeaderKey] =

@@ -4,25 +4,26 @@ import (
 	"dubbo-gateway/common/extension"
 	"dubbo-gateway/common/utils"
 	"dubbo-gateway/service"
-	"dubbo-gateway/service/entry"
+	"dubbo-gateway/service/vo"
 	"dubbo-gateway/web"
-	"github.com/apache/dubbo-go/common/logger"
 	"github.com/gin-gonic/gin"
-	perrors "github.com/pkg/errors"
 	"strconv"
 )
 
 func init() {
-	mode, err := extension.GetConfigMode()
-	if err != nil {
-		logger.Errorf("get config mode error: %v", perrors.WithStack(err))
-		return
-	}
-	r := &routerController{extension.GetMeta().NewRouterService(), mode}
+	r := &routerController{extension.GetMeta().NewRouterService(), extension.GetConfigMode()}
 	rGroup := web.AuthGroup().Group("/ro")
 	rGroup.POST("/", r.CreateRouter)
-	rGroup.GET("/list", r.ListByUser)
+	rGroup.GET("/list", r.ListAllAvailable)
 	rGroup.DELETE("/", r.DeleteRouter)
+	rGroup.GET("/", r.)
+
+	fGroup := web.AuthGroup().Group("/f")
+	fGroup.POST("/", r.CreateFilter)
+	fGroup.PUT("/", )
+	fGroup.DELETE("/")
+	fGroup.GET("/list")
+	fGroup.GET("/", r)
 }
 
 type routerController struct {
@@ -30,28 +31,11 @@ type routerController struct {
 	extension.Mode
 }
 
-func (r *routerController) CreateRouter(ctx *gin.Context) {
-	api := new(entry.ApiConfig)
-	if utils.IsErrorEmpty(ctx.ShouldBindJSON(api), ctx) {
-		if api.Uri == "" {
-			utils.ParamMissResponseOperation(ctx)
-			return
-		}
-		if user, err := web.GetSessionUser(ctx); utils.IsErrorEmpty(err, ctx) {
-			api.UserId = user.ID
-			if utils.IsErrorEmpty(r.RouterService.AddRouter(api), ctx) {
-				go r.Mode.Add(api.ID)
-			}
-			//utils.OperateResponse(nil, r.RouterService.AddRouter(api), ctx)
-		}
-	}
-}
-
-func (r *routerController) DeleteRouter(ctx *gin.Context) {
+func (r *routerController) FilterDetail(ctx *gin.Context) {
 	if idStr, ok := ctx.GetQuery("id"); ok {
 		if id, err := strconv.ParseInt(idStr, 10, 64); utils.IsErrorEmpty(err, ctx) {
-			if utils.IsErrorEmpty(r.RouterService.DeleteRouter(id), ctx) {
-				go r.Mode.Remove(id)
+			if utils.IsErrorEmpty(r.RouterService.DeleterFilter(id), ctx) {
+				utils.OperateSuccessResponse(nil, ctx)
 			}
 		}
 	} else {
@@ -59,9 +43,80 @@ func (r *routerController) DeleteRouter(ctx *gin.Context) {
 	}
 }
 
-func (r *routerController) ListByUser(ctx *gin.Context) {
-	if user, err := web.GetSessionUser(ctx); utils.IsErrorEmpty(err, ctx) {
-		result, err := r.RouterService.ListRouterByUserId(user.ID)
+func (r *routerController) CreateFilter(ctx *gin.Context) {
+	filter := new(vo.ApiFilterInfo)
+	if utils.IsErrorEmpty(ctx.ShouldBindJSON(filter), ctx) {
+		if filter.Filter.MethodId == 0 || filter.Filter.ReferenceId == 0 ||
+			filter.Filter.Name == "" {
+			utils.ParamMissResponseOperation(ctx)
+			return
+		}
+		utils.OperateResponse(nil, r.RouterService.AddFilter(filter), ctx)
+	}
+}
+
+func (r *routerController) ModifyFilter(ctx *gin.Context) {
+	filter := new(vo.ApiFilterInfo)
+	if utils.IsErrorEmpty(ctx.ShouldBindJSON(filter), ctx) {
+		if filter.Filter.MethodId == 0 || filter.Filter.ReferenceId == 0 ||
+			filter.Filter.ID == 0 || filter.Filter.Name == "" {
+			utils.ParamMissResponseOperation(ctx)
+			return
+		}
+		utils.OperateResponse(nil, r.RouterService.ModifyFilter(filter), ctx)
+	}
+}
+
+func (r *routerController) DeleteFilter(ctx *gin.Context) {
+	if idStr, ok := ctx.GetQuery("id"); ok {
+		if id, err := strconv.ParseInt(idStr, 10, 64); utils.IsErrorEmpty(err, ctx) {
+			if utils.IsErrorEmpty(r.RouterService.DeleterFilter(id), ctx) {
+				utils.OperateSuccessResponse(nil, ctx)
+			}
+		}
+	} else {
+		utils.ParamMissResponseOperation(ctx)
+	}
+}
+
+func (r *routerController) ListFilters(ctx *gin.Context) {
+	result, err := r.RouterService.ListFilters()
+	utils.OperateResponse(result, err, ctx)
+}
+
+func (r *routerController) ListAllAvailable(ctx *gin.Context) {
+	if methodNameLike, ok := ctx.GetQuery("methodName"); ok {
+		result, err := r.RouterService.SearchByMethodName(methodNameLike)
 		utils.OperateResponse(result, err, ctx)
+		return
+	}
+	utils.ParamMissResponseOperation(ctx)
+}
+
+func (r *routerController) CreateRouter(ctx *gin.Context) {
+	api := new(vo.ApiConfigInfo)
+	if utils.IsErrorEmpty(ctx.ShouldBindJSON(api), ctx) {
+		if api.ApiConfig.Method == "" {
+			utils.ParamMissResponseOperation(ctx)
+			return
+		}
+		if user, err := web.GetSessionUser(ctx); utils.IsErrorEmpty(err, ctx) {
+			api.ApiConfig.UserId = user.ID
+			if utils.IsErrorEmpty(r.RouterService.AddConfig(api), ctx) {
+				utils.OperateSuccessResponse(nil, ctx)
+			}
+		}
+	}
+}
+
+func (r *routerController) DeleteRouter(ctx *gin.Context) {
+	if idStr, ok := ctx.GetQuery("id"); ok {
+		if id, err := strconv.ParseInt(idStr, 10, 64); utils.IsErrorEmpty(err, ctx) {
+			if utils.IsErrorEmpty(r.RouterService.DeleteConfig(id), ctx) {
+				utils.OperateSuccessResponse(nil, ctx)
+			}
+		}
+	} else {
+		utils.ParamMissResponseOperation(ctx)
 	}
 }
