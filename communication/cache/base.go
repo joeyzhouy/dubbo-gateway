@@ -21,6 +21,7 @@ type base struct {
 	service.RegisterService
 	service.ReferenceService
 	service.RouterService
+	service.MethodService
 	*common.ApiCache
 }
 
@@ -34,8 +35,8 @@ func (b *base) Invoke(method string, params map[string]interface{}) (interface{}
 		err    error
 	)
 	// doFilter
-	if apiInfo.FilterChain != nil {
-		if _, err = b.doChain(apiInfo.FilterChain, params, constant.ResultChainFilterPrefix); err != nil {
+	if apiInfo.FilterId != 0 {
+		if err = b.doFilter(apiInfo.FilterId, params); err != nil {
 			return nil, err
 		}
 	}
@@ -44,6 +45,32 @@ func (b *base) Invoke(method string, params map[string]interface{}) (interface{}
 		return nil, err
 	}
 	return result, nil
+}
+
+func (b *base) doFilter(filterId int64, params map[string]interface{}) (err error) {
+	var (
+		referenceConfig   *dubboConfig.ReferenceConfig
+		paramClasses      []string
+		requestParamValue []interface{}
+	)
+	filter, ok := b.ApiCache.GetFilter(b.filterReferenceId(filterId))
+	if !ok {
+		return errors.New("no found filter")
+	}
+	referenceConfig, err = getReference(b.referenceId(filter.ReferenceId));
+	if err != nil {
+		return err
+	}
+	paramClasses = filter.ParamClass
+	if paramClasses == nil || len(paramClasses) == 0 {
+		paramClasses = nil
+		requestParamValue = nil
+	} else if requestParamValue, err = b.buildParameter(filter.ParamRule, params); err != nil {
+		return
+	}
+	_, err = referenceConfig.GetRPCService().(*dubboConfig.GenericService).Invoke(
+		[]interface{}{filter.MethodName, paramClasses, requestParamValue})
+	return err
 }
 
 func (b *base) doChain(chain *common.ApiChain, params map[string]interface{}, resultPrefix string /*, doResult func(result interface{})*/) (result interface{}, err error) {
@@ -86,7 +113,7 @@ func (b *base) doChain(chain *common.ApiChain, params map[string]interface{}, re
 	return
 }
 
-func (b *base) reduceResult(explains []common.ApiParamExplain, params map[string]interface{}, resultKey string) error {
+func (b *base) reduceResult(explains []*common.ApiParamExplain, params map[string]interface{}, resultKey string) error {
 	if explains == nil || len(explains) == 0 {
 		return nil
 	}
@@ -101,7 +128,7 @@ func (b *base) reduceResult(explains []common.ApiParamExplain, params map[string
 	return nil
 }
 
-func (b *base) buildParameter(explains []common.ApiParamExplain, params map[string]interface{}) ([]interface{}, error) {
+func (b *base) buildParameter(explains []*common.ApiParamExplain, params map[string]interface{}) ([]interface{}, error) {
 	if explains == nil || len(explains) == 0 {
 		return nil, nil
 	}
@@ -143,19 +170,64 @@ func (b *base) init() error {
 	if err != nil {
 		return err
 	}
+	methodDMap, err := b.MethodService.GetAllMethodDeclaration()
+	if err != nil {
+		return err
+	}
 	b.ApiCache = &common.ApiCache{}
 	b.ApiCache.SetApiInfos(make(map[string]*common.ApiInfo))
+	b.ApiCache.SetFilters(make(map[string]*common.ApiFilter))
 	for _, apiConfigInfo := range apiConfigInfos {
-		info, err := apiConfigInfo.ConvertCache()
+		info, filter, err := apiConfigInfo.ConvertCache(methodDMap)
 		if err != nil {
 			return err
+		}
+		if filter != nil {
+			if err = b.initFilter(filter, referenceMap); err != nil {
+				return err
+			}
 		}
 		if err = b.addApiInfoInDubbo(info, referenceMap); err != nil {
 			return err
 		}
 	}
-
 	return nil
+}
+
+func (b *base) initFilter(filter *common.ApiFilter, referenceMap map[int64]entry.Reference) error {
+	var (
+		err error
+	)
+	if !b.ApiCache.Exist(b.filterReferenceId(filter.FilterId)) {
+		ref, ok := referenceMap[filter.ReferenceId]
+		if !ok {
+			return perrors.Errorf("not found filter reference config with Id: %d", filter.ReferenceId)
+		}
+		if err = addReference(b.referenceId(filter.ReferenceId),
+			b.filterReferenceId(filter.ReferenceId), &dubboConfig.ReferenceConfig{
+				Protocol:      ref.Protocol,
+				Cluster:       ref.Cluster,
+				Registry:      strconv.FormatInt(ref.RegistryId, 10),
+				InterfaceName: ref.InterfaceName,
+				Generic:       true,
+			}); err != nil {
+			return err
+		}
+		b.ApiCache.SetFilter(b.filterReferenceId(filter.FilterId), filter)
+	}
+	return nil
+}
+
+func (b *base) referenceId(referenceId int64) string {
+	return strconv.FormatInt(referenceId, 10)
+}
+
+func (b *base) chainReferenceId(chainId int64) string {
+	return "c-" + strconv.FormatInt(chainId, 10)
+}
+
+func (b *base) filterReferenceId(filterId int64) string {
+	return "f-" + strconv.FormatInt(filterId, 10)
 }
 
 func (b *base) addApiInfoInDubboByAId(apiId int64) error {
@@ -178,32 +250,7 @@ func (b *base) addApiInfoInDubboByApiId(apiId int64, referenceMap map[int64]entr
 	return b.addApiInfoInDubboByApiConfigInfo(apiConfigInfo, referenceMap)
 }
 
-func (b *base) addApiInfoInDubboByApiConfigInfo(apiConfigInfo *vo.ApiConfigInfo, referenceMap map[int64]entry.Reference) error {
-	apiInfo, err := apiConfigInfo.ConvertCache()
-	if err != nil {
-		return err
-
-	}
-	return b.addApiInfoInDubbo(apiInfo, referenceMap)
-}
-
 func (b *base) addApiInfoInDubbo(info *common.ApiInfo, referenceMap map[int64]entry.Reference) error {
-	for filter := info.FilterChain; filter != nil; filter = filter.Next {
-		ref, ok := referenceMap[filter.ReferenceId]
-		if !ok {
-			return perrors.Errorf("not found filter reference config with Id: %d", filter.ReferenceId)
-		}
-		if err := addReference(strconv.FormatInt(filter.ReferenceId, 10),
-			strconv.FormatInt(filter.ChainId, 10), &dubboConfig.ReferenceConfig{
-				Protocol:      ref.Protocol,
-				Cluster:       ref.Cluster,
-				Registry:      strconv.FormatInt(ref.RegistryId, 10),
-				InterfaceName: ref.InterfaceName,
-				Generic:       true,
-			}); err != nil {
-			return err
-		}
-	}
 	for chain := info.MethodChain; chain != nil; chain = chain.Next {
 		ref, ok := referenceMap[chain.ReferenceId]
 		if !ok {
@@ -224,6 +271,23 @@ func (b *base) addApiInfoInDubbo(info *common.ApiInfo, referenceMap map[int64]en
 	return nil
 }
 
+func (b *base) addApiInfoInDubboByApiConfigInfo(apiConfigInfo *vo.ApiConfigInfo, referenceMap map[int64]entry.Reference) error {
+	mdMap, err := b.GetMethodDeclarationByApiId(apiConfigInfo.ApiConfig.ID)
+	if err != nil {
+		return err
+	}
+	apiInfo, filter, err := apiConfigInfo.ConvertCache(mdMap)
+	if err != nil {
+		return err
+	}
+	if filter != nil {
+		if err = b.initFilter(filter, referenceMap); err != nil {
+			return err
+		}
+	}
+	return b.addApiInfoInDubbo(apiInfo, referenceMap)
+}
+
 func NewLocalCache(mode extension.Mode) (common.GatewayCache, error) {
 	if mode == nil {
 		return nil, errors.New("param mode is empty")
@@ -233,6 +297,7 @@ func NewLocalCache(mode extension.Mode) (common.GatewayCache, error) {
 		RegisterService:  meta.NewRegisterService(),
 		ReferenceService: meta.NewReferenceService(),
 		RouterService:    meta.NewRouterService(),
+		MethodService:    meta.NewMethodService(),
 	}
 	err := cache.init()
 	if err != nil {
@@ -378,18 +443,6 @@ func removeApiCacheById(apiId int64, base *base) {
 		referenceId string
 		chainId     string
 	)
-	if apiInfo.FilterChain != nil {
-		for filter := apiInfo.FilterChain; filter != nil; filter = filter.Next {
-			referenceId = strconv.FormatInt(filter.ReferenceId, 10)
-			chainId = strconv.FormatInt(filter.ChainId, 10)
-			identifies, ok := referenceMap[referenceId]
-			if !ok {
-				identifies = make([]string, 0)
-			}
-			identifies = append(identifies, chainId)
-			referenceMap[referenceId] = identifies
-		}
-	}
 	for chain := apiInfo.MethodChain; chain != nil; chain = chain.Next {
 		referenceId = strconv.FormatInt(chain.ReferenceId, 10)
 		chainId = strconv.FormatInt(chain.ChainId, 10)

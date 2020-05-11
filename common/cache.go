@@ -4,14 +4,18 @@ import (
 	"dubbo-gateway/common/constant"
 	"github.com/go-errors/errors"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 )
 
 const (
-	SelfKey = "_self"
+	SelfKey       = "_self"
+	StaticKey     = "_static"
+	ExpressionKey = "_expression"
 )
 
+var expressionReg = regexp.MustCompile(`\${(.*?)\.(.*)}`)
 var parsing = make(map[string]func(key string, param map[string]interface{}) (interface{}, error))
 
 func init() {
@@ -61,6 +65,31 @@ func init() {
 type ApiCache struct {
 	sync.RWMutex
 	mappings map[string]*ApiInfo
+	filters  map[string]*ApiFilter
+}
+
+func (a *ApiCache) Exist(filterId string) bool {
+	_, ok := a.filters[filterId]
+	return ok
+}
+
+func (a *ApiCache) SetFilters(filtersMap map[string]*ApiFilter) {
+	a.Lock()
+	defer a.Unlock()
+	a.filters = filtersMap
+}
+
+func (a *ApiCache) SetFilter(filterId string, filter *ApiFilter) {
+	a.Lock()
+	defer a.Unlock()
+	a.filters[filterId] = filter
+}
+
+func (a *ApiCache) GetFilter(filterId string) (*ApiFilter, bool) {
+	a.RLock()
+	defer a.RUnlock()
+	result, ok := a.filters[filterId]
+	return result, ok
 }
 
 func (a *ApiCache) SetApiInfos(mappings map[string]*ApiInfo) {
@@ -98,100 +127,157 @@ func (a *ApiCache) RemoveByMethods(methodNames []string) {
 type ApiInfo struct {
 	Method      string    `json:"method"`
 	ApiId       int64     `json:"apiId"`
-	FilterChain *ApiChain `json:"filter"`
+	FilterId    int64     `json:"filterId"`
 	MethodChain *ApiChain `json:"method"`
 }
 
-type ApiChain struct {
-	ChainId     int64             `json:"chainId"`
-	ReferenceId int64             `json:"referenceId"`
-	MethodName  string            `json:"methodName"`
-	ParamClass  []string          `json:"paramClass"`
-	ParamRule   []ApiParamExplain `json:"paramRule"`
-	ResultRule  []ApiParamExplain `json:"resultRule"`
-	Next        *ApiChain         `json:"next"`
+type ApiFilter struct {
+	FilterId    int64              `json:"filterId"`
+	ReferenceId int64              `json:"referenceId"`
+	MethodName  string             `json:"methodName"`
+	ParamClass  []string           `json:"paramClass"`
+	ParamTypes  []int              `json:"paramTypes"`
+	ParamRule   []*ApiParamExplain `json:"paramRule"`
 }
 
-type ApiParamExplain map[string]*FiledExpression
+type ApiChain struct {
+	ChainId     int64              `json:"chainId"`
+	ReferenceId int64              `json:"referenceId"`
+	MethodName  string             `json:"methodName"`
+	ParamClass  []string           `json:"paramClass"`
+	ParamRule   []*ApiParamExplain `json:"paramRule"`
+	ParamTypes  []int              `json:"paramTypes"`
+	ResultRule  []*ApiParamExplain `json:"resultRule"`
+	Next        *ApiChain          `json:"next"`
+}
+
+type ApiParamExplain map[string]interface{}
 
 func (a *ApiParamExplain) Convert(params map[string]interface{}) (interface{}, error) {
-	filedExpression, ok := (*a)[SelfKey]
-	if ok {
-		return filedExpression.parse(params)
-	}
 	var (
-		fieldValue interface{}
+		ok         bool
+		expression Expression
 		err        error
+		value      interface{}
 	)
-	result := make(map[string]interface{})
-	for key, field := range *a {
-		if fieldValue, err = field.parse(params); err != nil {
-			result[key] = fieldValue
-		}
+	value, ok = (*a)[SelfKey]
+	if ok {
+		expression, err = CreateExpression(value.(map[string]interface{}))
+	} else {
+		expression, err = CreateExpression(*a)
 	}
-	return result, nil
+	if err != nil {
+		return nil, err
+	}
+	return expression.Get(params)
 }
 
-type FiledExpression struct {
-	Static     interface{} `json:"_static"`
-	Expression Expression  `json:"_expression"`
-	ApiParamExplain
-}
-
-func (f *FiledExpression) parse(params map[string]interface{}) (interface{}, error) {
-	if f.Static != nil {
-		return f.Static, nil
+func CreateExpression(expression map[string]interface{}) (Expression, error) {
+	var (
+		value interface{}
+		ok    bool
+	)
+	if value, ok = expression[StaticKey]; ok {
+		return &staticExpression{Value: value}, nil
+	} else if value, ok = expression[ExpressionKey]; ok {
+		return newSingleExpression(value.(string))
+	} else {
+		return newObjectExpression(value.(map[string]interface{}))
 	}
-	if f.ApiParamExplain != nil {
-		return f.ApiParamExplain.Convert(params)
-	}
-	return f.Expression.Get(params)
 }
 
 type Expression interface {
 	Get(map[string]interface{}) (interface{}, error)
 }
 
-type SingleExpression struct {
+type staticExpression struct {
+	Value interface{}
+}
+
+func (s *staticExpression) Get(map[string]interface{}) (interface{}, error) {
+	return s.Value, nil
+}
+
+type singleExpression struct {
 	Prefix string
 	Path   string
 }
 
-func (s *SingleExpression) Get(params map[string]interface{}) (interface{}, error) {
+func newSingleExpression(expression string) (*singleExpression, error) {
+	strs := expressionReg.FindStringSubmatch(expression)
+	if len(strs) != 2 {
+		return nil, errors.New("error expression: " + expression)
+	}
+	return &singleExpression{
+		Prefix: strs[0],
+		Path:   strs[1],
+	}, nil
+}
+
+func (s *singleExpression) Get(params map[string]interface{}) (interface{}, error) {
 	return parsing[s.Prefix](s.Path, params)
 }
 
-type ArrayExpression struct {
-	SingleExpression
-	ApiParamExplain
+type objectExpression struct {
+	mappings map[string]Expression
 }
 
-func (a *ArrayExpression) Get(params map[string]interface{}) (interface{}, error) {
-	arr, err := a.SingleExpression.Get(params)
-	if err != nil {
-		return nil, err
-	}
-	if len(a.ApiParamExplain) == 0 {
-		return arr, nil
-	}
-	list, ok := arr.([]interface{})
-	if !ok {
-		return nil, errors.New("path: " + a.Path + "not array")
-	} else if len(list) == 0 {
-		return nil, nil
-	}
-	result := make([]interface{}, 0, len(list))
-	for _, en := range list {
-		params[constant.CustomKey] = en
-		temp, err := a.ApiParamExplain.Convert(params)
+func newObjectExpression(fieldMap map[string]interface{}) (*objectExpression, error) {
+	mappings := make(map[string]Expression)
+	var err error
+	for key, value := range fieldMap {
+		mappings[key], err = CreateExpression(value.(map[string]interface{}))
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, temp)
 	}
-	delete(params, constant.CustomKey)
+	return &objectExpression{
+		mappings: mappings,
+	}, nil
+}
+
+func (o *objectExpression) Get(param map[string]interface{}) (interface{}, error) {
+	result := make(map[string]interface{})
+	var err error
+	for key, mapping := range o.mappings {
+		if result[key], err = mapping.Get(param); err != nil {
+			return nil, err
+		}
+	}
 	return result, nil
 }
+
+//type ArrayExpression struct {
+//	SingleExpression
+//	ApiParamExplain
+//}
+//
+//func (a *ArrayExpression) Get(params map[string]interface{}) (interface{}, error) {
+//	arr, err := a.SingleExpression.Get(params)
+//	if err != nil {
+//		return nil, err
+//	}
+//	if len(a.ApiParamExplain) == 0 {
+//		return arr, nil
+//	}
+//	list, ok := arr.([]interface{})
+//	if !ok {
+//		return nil, errors.New("path: " + a.Path + "not array")
+//	} else if len(list) == 0 {
+//		return nil, nil
+//	}
+//	result := make([]interface{}, 0, len(list))
+//	for _, en := range list {
+//		params[constant.CustomKey] = en
+//		temp, err := a.ApiParamExplain.Convert(params)
+//		if err != nil {
+//			return nil, err
+//		}
+//		result = append(result, temp)
+//	}
+//	delete(params, constant.CustomKey)
+//	return result, nil
+//}
 
 type GatewayCache interface {
 	Invoke(method string, params map[string]interface{}) (interface{}, error)

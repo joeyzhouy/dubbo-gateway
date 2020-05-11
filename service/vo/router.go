@@ -3,40 +3,33 @@ package vo
 import (
 	"dubbo-gateway/common"
 	"dubbo-gateway/service/entry"
-	"encoding/json"
+	"github.com/go-errors/errors"
+	jsoniter "github.com/json-iterator/go"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 type ApiConfigInfo struct {
 	ApiConfig entry.ApiConfig `json:"config,omitempty"`
-	Filter    *ApiFilterInfo   `json:"filters,omitempty"`
-	Chains    []*ApiChainInfo  `json:"chains,omitempty"`
+	Filter    *ApiFilterInfo  `json:"filters,omitempty"`
+	Chains    []*ApiChainInfo `json:"chains,omitempty"`
 }
 
-func (a *ApiConfigInfo) ConvertCache() (*common.ApiInfo, error) {
+func (a *ApiConfigInfo) ConvertCache(paramMap map[int64]*MethodDeclaration) (*common.ApiInfo, *common.ApiFilter, error) {
+	var (
+		filter *common.ApiFilter
+		err    error
+	)
 	info := &common.ApiInfo{
 		ApiId:  a.ApiConfig.ID,
 		Method: a.ApiConfig.Method,
 	}
-	if len(a.FilterChains) > 0 {
-		var son *common.ApiChain
-		for i := len(a.FilterChains) - 1; i >= 0; i-- {
-			temp, err := a.FilterChains[i].ConvertCache()
-			if err != nil {
-				return nil, err
-			}
-			if son != nil {
-				temp.Next = son
-			}
-			son = temp
-		}
-		info.FilterChain = son
-	}
 	if len(a.Chains) > 0 {
 		var son *common.ApiChain
 		for i := len(a.Chains) - 1; i >= 0; i-- {
-			temp, err := a.Chains[i].ConvertCache()
+			temp, err := a.Chains[i].ConvertCache(paramMap)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			if son != nil {
 				temp.Next = son
@@ -45,50 +38,36 @@ func (a *ApiConfigInfo) ConvertCache() (*common.ApiInfo, error) {
 		}
 		info.MethodChain = son
 	}
-	return info, nil
-}
+	if a.Filter != nil {
+		if filter, err = a.Filter.ConvertCache(paramMap); err != nil {
+			return nil, nil, err
+		}
 
-func (a *ApiConfigInfo) FillChains(chains []entry.ApiChain, mappings []entry.ApiParamMapping) error {
-	var apiChainInfo ApiChainInfo
-	filterChains := make([]ApiChainInfo, 0)
-	methodChains := make([]ApiChainInfo, 0)
-	paramMapping := make(map[int64][]entry.ApiParamMapping)
-	for _, mapping := range mappings {
-		m, ok := paramMapping[mapping.ChainId]
-		if !ok {
-			m = make([]entry.ApiParamMapping, 0)
-		}
-		m = append(m, mapping)
-		paramMapping[mapping.ChainId] = m
 	}
-	for _, chain := range chains {
-		apiChainInfo = ApiChainInfo{
-			Chain: chain,
-		}
-		if err := apiChainInfo.FillMappings(paramMapping[chain.ID]); err != nil {
-			return err
-		}
-		if chain.TypeId == entry.ChainFilter {
-			filterChains = append(filterChains, apiChainInfo)
-		} else if chain.TypeId == entry.ChainMethod {
-			methodChains = append(methodChains, apiChainInfo)
-		}
-	}
-	a.FilterChains = filterChains
-	a.Chains = methodChains
-	return nil
+	return info, filter, nil
 }
 
 type ApiParamMapping struct {
 	entry.ApiParamMapping
-	common.ApiParamExplain `json:"explain"`
+	*common.ApiParamExplain `json:"explain"`
 }
 
 func (a *ApiParamMapping) Unmarshal() error {
-	return nil
+	if a.ApiParamMapping.Explain == "" {
+		return nil
+	}
+	a.ApiParamExplain = new(common.ApiParamExplain)
+	return json.Unmarshal([]byte(a.ApiParamMapping.Explain), a.ApiParamExplain)
 }
 
 func (a *ApiParamMapping) Marshall() error {
+	if a.ApiParamExplain != nil {
+		bs, err := json.Marshal(a.ApiParamExplain)
+		if err != nil {
+			return err
+		}
+		a.ApiParamMapping.Explain = string(bs)
+	}
 	return nil
 }
 
@@ -105,56 +84,90 @@ func (a *ApiParamMapping) convert() error {
 }
 
 type ApiChainInfo struct {
-	Chain         entry.ApiChain    `json:"chain,omitempty"`
+	Chain         entry.ApiChain     `json:"chain,omitempty"`
 	ParamMappings []*ApiParamMapping `json:"paramMappings,omitempty"`
-	ResultMapping *ApiParamMapping `json:"resultMapping,omitempty"`
+	ResultMapping *ApiParamMapping   `json:"resultMapping,omitempty"`
 }
 
-func (a *ApiChainInfo) ConvertCache() (*common.ApiChain, error) {
-	//TODO
+func (a *ApiChainInfo) ConvertCache(paramMap map[int64]*MethodDeclaration) (*common.ApiChain, error) {
+	md, ok := paramMap[a.Chain.MethodId]
+	if !ok {
+		return nil, errors.New("miss methodId")
+	}
 	chain := &common.ApiChain{
 		ReferenceId: a.Chain.ReferenceId,
 		ChainId:     a.Chain.ID,
-		//MethodName: a.Chain.me
+		MethodName:  md.MethodName,
+	}
+	length := len(md.Params)
+	if length > 0 {
+		chain.ParamClass = make([]string, 0, length)
+		chain.ParamTypes = make([]int, 0, length)
+		for _, param := range md.Params {
+			chain.ParamTypes = append(chain.ParamTypes, param.TypeId)
+			chain.ParamClass = append(chain.ParamClass, param.Key)
+		}
 	}
 	return chain, nil
 }
 
-//func (a *ApiChainInfo) FillMappings(mappings []entry.ApiParamMapping) error {
-//	if len(mappings) == 0 {
-//		return nil
-//	}
-//	paramMapping := make([]ApiParamMapping, 0)
-//	resultMapping := make([]ApiParamMapping, 0)
-//	for _, mapping := range mappings {
-//		apiParamMapping := ApiParamMapping{
-//			ApiParamMapping: mapping,
-//		}
-//		if err := (&apiParamMapping).convert(); err != nil {
-//			return err
-//		}
-//		if mapping.TypeId == entry.ParamMapping {
-//			paramMapping = append(paramMapping, apiParamMapping)
-//		} else if mapping.TypeId == entry.ResultMapping {
-//			resultMapping = append(resultMapping, apiParamMapping)
-//		}
-//	}
-//	a.ParamMappings = paramMapping
-//	a.ResultMapping = resultMapping
-//	return nil
-//}
-
 func (a *ApiChainInfo) Unmarshal() error {
+	if len(a.ParamMappings) > 0 {
+		for _, mapping := range a.ParamMappings {
+			if err := mapping.Unmarshal(); err != nil {
+				return err
+			}
+		}
+	}
+	if a.ResultMapping != nil {
+		if err := a.ResultMapping.Unmarshal(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
 func (a *ApiChainInfo) Marshal() error {
+	if len(a.ParamMappings) > 0 {
+		for _, mapping := range a.ParamMappings {
+			if err := mapping.Marshall(); err != nil {
+				return err
+			}
+		}
+	}
+	if a.ResultMapping != nil {
+		if err := a.ResultMapping.Marshall(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
 type ApiFilterInfo struct {
-	Filter        entry.ApiFilter    `json:"filter,omitempty"`
+	entry.ApiFilter
 	ParamMappings []*ApiParamMapping `json:"paramMappings,omitempty"`
+}
+
+func (a ApiFilterInfo) ConvertCache(paramMap map[int64]*MethodDeclaration) (*common.ApiFilter, error) {
+	md, ok := paramMap[a.MethodId]
+	if !ok {
+		return nil, errors.New("miss methodId")
+	}
+	filter := &common.ApiFilter{
+		FilterId:    a.ID,
+		MethodName:  md.MethodName,
+		ReferenceId: a.ReferenceId,
+	}
+	length := len(md.Params)
+	if length > 0 {
+		filter.ParamClass = make([]string, 0, length)
+		filter.ParamTypes = make([]int, 0, length)
+		for _, param := range md.Params {
+			filter.ParamTypes = append(filter.ParamTypes, param.TypeId)
+			filter.ParamClass = append(filter.ParamClass, param.Key)
+		}
+	}
+	return filter, nil
 }
 
 func (a *ApiFilterInfo) Unmarshal() error {

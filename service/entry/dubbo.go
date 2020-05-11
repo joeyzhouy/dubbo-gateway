@@ -3,8 +3,10 @@ package entry
 const (
 	Self        = -1
 	BaseType    = 1
+	ListType    = 5
+	MapType     = 6
+	EnumTyp     = 10
 	ComplexType = 99
-	//CollectionType = 10
 
 	MethodEntryResult = 1
 	MethodEntryParam  = 2

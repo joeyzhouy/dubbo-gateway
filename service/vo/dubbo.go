@@ -26,6 +26,20 @@ type Method struct {
 	Params []*entry.MethodParamStructure `json:"params"`
 }
 
+type MethodDeclaration struct {
+	entry.Method
+	Params []entry.Entry `json:"params"`
+}
+
+type ParamMethodInfo struct {
+	MethodId    int64
+	MethodName  string
+	Seq         int
+	EntryId     int64
+	EntryTypeId int
+	ParamClass  string
+}
+
 //type Entry struct {
 //	entry.Entry
 //	entry.Structure

@@ -19,7 +19,7 @@ type routerService struct {
 
 func (r *routerService) GetFilter(filterId int64) (*vo.ApiFilterInfo, error) {
 	result := new(vo.ApiFilterInfo)
-	err := r.Where("id = ?", filterId).Find(&(result.Filter)).Error
+	err := r.Where("id = ?", filterId).Find(&(result.ApiFilter)).Error
 	if err != nil {
 		return nil, err
 	}
@@ -50,11 +50,11 @@ func (r *routerService) AddFilter(filter *vo.ApiFilterInfo) (err error) {
 			tx.Commit()
 		}
 	}()
-	if err = tx.Save(&filter.Filter).Error; err != nil {
+	if err = tx.Save(&filter.ApiFilter).Error; err != nil {
 		return
 	}
 	if len(filter.ParamMappings) > 0 {
-		return r.saveFilterMapping(tx, filter.ParamMappings, filter.Filter.ID)
+		return r.saveFilterMapping(tx, filter.ParamMappings, filter.ApiFilter.ID)
 	}
 	return nil
 }
@@ -83,15 +83,15 @@ func (r *routerService) ModifyFilter(filter *vo.ApiFilterInfo) (err error) {
 			tx.Commit()
 		}
 	}()
-	if err = tx.Save(&filter.Filter).Error; err != nil {
+	if err = tx.Save(&filter.ApiFilter).Error; err != nil {
 		return
 	}
 	if err = tx.Delete(entry.ApiParamMapping{}, "chain_id = ? and api_id is null",
-		filter.Filter.ID).Error; err != nil {
+		filter.ApiFilter.ID).Error; err != nil {
 		return
 	}
 	if len(filter.ParamMappings) > 0 {
-		return r.saveFilterMapping(tx, filter.ParamMappings, filter.Filter.ID)
+		return r.saveFilterMapping(tx, filter.ParamMappings, filter.ApiFilter.ID)
 	}
 	return nil
 }
@@ -255,7 +255,7 @@ func (r *routerService) ListAllAvailable() ([]*vo.ApiConfigInfo, error) {
 		return nil, err
 	}
 	if err := r.Table("d_api_chain").
-		Select("d_api_chain.id, d_api_chain.api_id, d_api_chain.type_id, d_api_chain.reference_id, d_api_chain.method_id, d_api_chain.seq").
+		Select("d_api_chain.id, d_api_chain.api_id, d_api_chain.reference_id, d_api_chain.method_id, d_api_chain.seq").
 		Joins("JOIN d_api_config on d_api_config.id = d_api_chain.api_id").
 		Where("d_api_config.status = ?", entry.Available).Order("d_api_chain.id").Find(&chains).Error; err != nil {
 		return nil, err
@@ -350,7 +350,7 @@ func (r *routerService) join(apiConfigs []entry.ApiConfig, chains []entry.ApiCha
 	}
 	for _, filter := range filters {
 		filterMap[filter.ID] = &vo.ApiFilterInfo{
-			Filter:        filter,
+			ApiFilter:        filter,
 			ParamMappings: filterParamMapping[filter.ID],
 		}
 	}

@@ -140,11 +140,26 @@ type referenceService struct {
 
 func (r *referenceService) GetReferenceByApiId(apiId int64) ([]entry.Reference, error) {
 	var result []entry.Reference
+	var filterReference entry.Reference
 	err := r.Table("d_reference").
 		Select("d_reference.id, d_reference.registry_id, d_reference.protocol, d_reference.interface_name, d_reference.cluster").
 		Joins("JOIN d_api_chain on d_api_chain.reference_id = d_reference.id and d_api_chain.is_delete = 0").
 		Where("d_api_chain.api_id = ?", apiId).Find(&result).Error
-	return result, err
+	if err != nil {
+		return nil, err
+	}
+	err = r.Take("d_reference").
+		Select("d_reference.id, d_reference.registry_id, d_reference.protocol, d_reference.interface_name, d_reference.cluster").
+		Joins("JOIN d_api_filter on d_api_filter.reference_id = d_reference.id and d_api_filter.is_delete = 0").
+		Joins("JOIN d_api_config on d_api_config.filter_id = d_api_filter.id").
+		Where("d_api_config.id = ?", apiId).Find(&filterReference).Error
+	if err != nil && err != gorm.ErrRecordNotFound {
+		return nil, err
+	}
+	if err == nil {
+		result = append(result, filterReference)
+	}
+	return result, nil
 }
 
 func (r *referenceService) GetReferenceEntryById(id int64) (*entry.Reference, error) {
@@ -267,6 +282,120 @@ func (r *referenceService) ListAll() ([]entry.Reference, error) {
 type methodService struct {
 	*gorm.DB
 	service.EntryService
+}
+
+func (m *methodService) GetMethodDeclarationByApiId(apiId int64) (map[int64]*vo.MethodDeclaration, error) {
+	var (
+		apiConfig    entry.ApiConfig
+		err          error
+		methodInfos  []vo.ParamMethodInfo
+		filterMethod []vo.ParamMethodInfo
+		md           *vo.MethodDeclaration
+		ok           bool
+	)
+	result := make(map[int64]*vo.MethodDeclaration)
+	if err = m.Where("id = ?", apiId).Find(&apiConfig).Error; err != nil {
+		return nil, err
+	}
+
+	if err = m.Table("d_entry").
+		Select("d_method.id, d_method.method_name, d_method_param.seq, d_entry.id, d_entry.type_id, d_entry.`key`").
+		Joins("d_method_param on d_method_param.entry_id = d_entry.id").
+		Joins("d_method on d_method.id = d_method_param.method_id").
+		Joins("d_api_chain on d_api_chain.method_id = d_method.id").
+		Where("d_api_chain.api_id = ?", apiId).Order("d_method_param.seq").Scan(&methodInfos).Error; err != nil {
+		return nil, err
+	}
+	if apiConfig.FilterId != 0 {
+		if err = m.Table("d_entry").
+			Select("d_method.id, d_method.method_name, d_method_param.seq, d_entry.id, d_entry.type_id, d_entry.`key`").
+			Joins("d_method_param on d_method_param.entry_id = d_entry.id").
+			Joins("d_method on d_method.id = d_method_param.method_id").
+			Joins("d_api_filter on d_api_filter.method_id = d_method.id").
+			Where("d_api_filter.id = ?", apiConfig.FilterId).Order("d_method_param.seq").Scan(&filterMethod).Error; err != nil {
+			return nil, err
+		}
+		methodInfos = append(methodInfos, filterMethod...)
+	}
+	for _, paramInfo := range methodInfos {
+		md, ok = result[paramInfo.MethodId]
+		if !ok {
+			md = &vo.MethodDeclaration{
+				Method: entry.Method{
+					Base: entry.Base{
+						ID: paramInfo.MethodId,
+					},
+					MethodName: paramInfo.MethodName,
+					//ReferenceId: paramInfo.ReferenceId,
+				},
+				Params: make([]entry.Entry, 0),
+			}
+			result[paramInfo.MethodId] = md
+		}
+		tt := md.Params
+		tt = append(tt, entry.Entry{
+			Key:    paramInfo.ParamClass,
+			TypeId: paramInfo.EntryTypeId,
+			Base: entry.Base{
+				ID: paramInfo.EntryId,
+			},
+		})
+		md.Params = tt
+	}
+	return result, nil
+}
+
+func (m *methodService) GetMethodDeclaration(methodId int64) (*vo.MethodDeclaration, error) {
+	var (
+		err    error
+		result *vo.MethodDeclaration
+	)
+	result = &vo.MethodDeclaration{}
+	if err = m.Select("id, reference_id, method_name").Where("id = ? and is_delete = 0", methodId).Find(&(result.Method)).Error; err != nil {
+		return nil, err
+	}
+	if err = m.Table("d_entry").
+		Select("d_entry.type_id, d_entry.`key`").
+		Joins("JOIN d_method_param on d_method_param.entry_id = d_entry.id").
+		Where("d_method_param.method_id = ?", methodId).Order("d_method_param.seq").Scan(&(result.Params)).Error; err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (m *methodService) GetAllMethodDeclaration() (map[int64]*vo.MethodDeclaration, error) {
+	var
+	(
+		ok     bool
+		md     *vo.MethodDeclaration
+		params []vo.ParamMethodInfo
+	)
+	result := make(map[int64]*vo.MethodDeclaration)
+	err := m.Table("d_entry").
+		Select("d_method.id, d_method.method_name, d_method_param.seq, d_entry.id, d_entry.type_id, d_entry.`key`").
+		Joins("JOIN d_method_param on d_method_param.entry_id = d_entry.id").
+		Joins("JOIN d_method on d_method.id = d_method_param.method_id").
+		Where("d_entry.is_delete = 0 and d_method_param.is_delete = 0 and d_method.is_delete = 0").Scan(&params).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, param := range params {
+		md, ok = result[param.MethodId]
+		if !ok {
+			md = &vo.MethodDeclaration{
+				Method: entry.Method{
+					MethodName: param.MethodName,
+				},
+				Params: make([]entry.Entry, 0),
+			}
+		}
+		md.Params = append(md.Params, entry.Entry{
+			TypeId: param.EntryTypeId,
+			Key:    param.ParamClass,
+		})
+		result[param.MethodId] = md
+	}
+	return result, nil
 }
 
 func (m *methodService) SearchMethods(registryId, referenceId int64, methodName string) ([]*vo.Method, error) {

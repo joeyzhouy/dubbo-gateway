@@ -90,6 +90,5 @@ func newSingleMode(deploy *config.Deploy) (extension.Mode, error) {
 		return nil, err
 	}
 	mode.GatewayCache = gatewayCache
-
 	return mode, nil
 }

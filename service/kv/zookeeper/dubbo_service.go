@@ -288,6 +288,18 @@ type methodService struct {
 	conn *zk.Conn
 }
 
+func (m *methodService) GetAllMethodDeclaration() (map[int64]*vo.MethodDeclaration, error) {
+	panic("implement me")
+}
+
+func (m *methodService) GetMethodDeclaration(methodId int64) (*vo.MethodDeclaration, error) {
+	panic("implement me")
+}
+
+func (m *methodService) GetMethodDeclarationByApiId(apiId int64) (map[int64]*vo.MethodDeclaration, error) {
+	panic("implement me")
+}
+
 func (m *methodService) SearchMethods(registryId, referenceId int64, methodName string) ([]*vo.Method, error) {
 	panic("implement me")
 }

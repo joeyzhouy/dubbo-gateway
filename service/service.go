@@ -42,6 +42,9 @@ type MethodService interface {
 	GetMethodsByReferenceId(referenceId int64) ([]entry.Method, error)
 	GetMethodInfoByReferenceId(referenceId int64) (*vo.ReferenceMethodInfo, error)
 	SearchMethods(registryId, referenceId int64, methodName string) ([]*vo.Method, error)
+	GetAllMethodDeclaration() (map[int64]*vo.MethodDeclaration, error)
+	GetMethodDeclaration(methodId int64) (*vo.MethodDeclaration, error)
+	GetMethodDeclarationByApiId(apiId int64) (map[int64]*vo.MethodDeclaration, error)
 }
 
 type EntryService interface {
