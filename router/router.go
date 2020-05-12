@@ -1,7 +1,6 @@
 package router
 
 import (
-	"dubbo-gateway/common"
 	"dubbo-gateway/common/config"
 	"dubbo-gateway/common/constant"
 	"dubbo-gateway/common/extension"
@@ -12,22 +11,18 @@ import (
 	"strings"
 )
 
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
 var justSupportPostResponse = utils.Response{Code: 400, Message: "just support POST"}
 var missMethodParamResponse = utils.Response{Code: 400, Message: "miss method key"}
 var systemErrorReponse = utils.Response{Code: 500, Message: "system error"}
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 func init() {
-	var err error
 	router := new(routerOrigin)
 	router.routerConfig = config.GetRouterConfig()
 	router.r = gin.New()
 	router.r.Use(utils.LoggerWithWriter(), gin.Recovery())
 	router.r.Any(router.routerConfig.Config.Prefix, router.operate)
-	router.mode, err = extension.GetConfigMode()
-	if err != nil {
-		panic("no config mode")
-	}
+	router.mode = extension.GetConfigMode()
 	extension.SetOrigin(extension.Router, router)
 }
 
@@ -63,7 +58,12 @@ func (r *routerOrigin) operate(ctx *gin.Context) {
 		}
 		paramMap[constant.RouterBodyKey] = rs.Content
 		result, err := r.mode.Invoke(rs.Method, paramMap)
-		utils.OperateResponse(result, err, ctx)
+		if err != nil {
+			utils.OperateResponse(nil, err, ctx)
+			return
+		}
+		bs, err := json.Marshal(result)
+		_, _ = ctx.Writer.Write(bs)
 	}
 
 }
@@ -72,19 +72,9 @@ func (r *routerOrigin) getContextParam(ctx *gin.Context) (map[string]interface{}
 	paramMap := make(map[string]interface{})
 	paramMap[constant.RouterHeaderKey] = ctx.Request.Header
 	paramMap[constant.RouterBodyKey] = ctx.Request.Header
-	paramMap[constant.RouterQueryKey] = ctx.Request.Form
+	paramMap[constant.RouterQueryKey] = ctx.Request.URL.Query()
+	paramMap[constant.CustomKey] = make(map[string]interface{})
 	return paramMap, nil
-}
-
-func (r *routerOrigin) doFilter(ctx *gin.Context, apiInfo *common.ApiInfo) bool {
-	if apiInfo.FilterChain == nil {
-		return true
-	}
-	return false
-}
-
-func (r *routerOrigin) invoke(ctx *gin.Context, apiInfo *common.ApiInfo) (interface{}, error) {
-	return nil, nil
 }
 
 type RequestStructure struct {

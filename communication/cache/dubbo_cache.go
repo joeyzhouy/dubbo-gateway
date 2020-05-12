@@ -2,6 +2,7 @@ package cache
 
 import (
 	"github.com/apache/dubbo-go/config"
+	_ "github.com/apache/dubbo-go/registry/protocol"
 	perrors "github.com/pkg/errors"
 	"sync"
 )
@@ -9,7 +10,7 @@ import (
 var drCache dubboReferenceCache
 var regCache dubboRegistryCache
 var defaultConsumerConfig *config.ConsumerConfig
-var referReference map[string]map[string]string
+var referReference = make(map[string]map[string]string)
 var referLock sync.RWMutex
 
 func init() {
@@ -95,12 +96,6 @@ func removeAllReference(referenceId string) []string {
 	delete(drCache, referenceId)
 	return identifies
 }
-
-//func removeReference(referenceId, identify string) {
-//	removeReferences(map[string][]string{
-//		referenceId: {identify},
-//	})
-//}
 
 func removeReferences(referenceMap map[string][]string) {
 	referLock.Lock()

@@ -4,6 +4,7 @@ import (
 	"dubbo-gateway/common/constant"
 	"github.com/go-errors/errors"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -45,8 +46,11 @@ func init() {
 		}
 	parsing[constant.RouterQueryKey] =
 		func(key string, param map[string]interface{}) (interface{}, error) {
-			params := param[constant.RouterQueryKey].(map[string]interface{})
-			return params[key], nil
+			params := param[constant.RouterQueryKey].(url.Values)
+			if params == nil {
+				return nil, nil
+			}
+			return params.Get(key), nil
 		}
 	parsing[constant.CustomKey] =
 		func(key string, param map[string]interface{}) (i interface{}, e error) {
@@ -125,10 +129,11 @@ func (a *ApiCache) RemoveByMethods(methodNames []string) {
 }
 
 type ApiInfo struct {
-	Method      string    `json:"method"`
-	ApiId       int64     `json:"apiId"`
-	FilterId    int64     `json:"filterId"`
-	MethodChain *ApiChain `json:"method"`
+	Method      string           `json:"method"`
+	ApiId       int64            `json:"apiId"`
+	FilterId    int64            `json:"filterId"`
+	MethodChain *ApiChain        `json:"method"`
+	ResultRule  *ApiParamExplain `json:"resultRule"`
 }
 
 type ApiFilter struct {
@@ -147,8 +152,8 @@ type ApiChain struct {
 	ParamClass  []string           `json:"paramClass"`
 	ParamRule   []*ApiParamExplain `json:"paramRule"`
 	ParamTypes  []int              `json:"paramTypes"`
-	ResultRule  []*ApiParamExplain `json:"resultRule"`
-	Next        *ApiChain          `json:"next"`
+	//ResultRule  []*ApiParamExplain `json:"resultRule"`
+	Next *ApiChain `json:"next"`
 }
 
 type ApiParamExplain map[string]interface{}
@@ -182,7 +187,7 @@ func CreateExpression(expression map[string]interface{}) (Expression, error) {
 	} else if value, ok = expression[ExpressionKey]; ok {
 		return newSingleExpression(value.(string))
 	} else {
-		return newObjectExpression(value.(map[string]interface{}))
+		return newObjectExpression(expression)
 	}
 }
 
@@ -205,13 +210,16 @@ type singleExpression struct {
 
 func newSingleExpression(expression string) (*singleExpression, error) {
 	strs := expressionReg.FindStringSubmatch(expression)
-	if len(strs) != 2 {
+	if len(strs) < 2 {
 		return nil, errors.New("error expression: " + expression)
 	}
-	return &singleExpression{
-		Prefix: strs[0],
-		Path:   strs[1],
-	}, nil
+	result := &singleExpression{
+		Prefix: strs[1],
+	}
+	if len(strs) > 2 {
+		result.Path = strs[2]
+	}
+	return result, nil
 }
 
 func (s *singleExpression) Get(params map[string]interface{}) (interface{}, error) {
@@ -246,38 +254,6 @@ func (o *objectExpression) Get(param map[string]interface{}) (interface{}, error
 	}
 	return result, nil
 }
-
-//type ArrayExpression struct {
-//	SingleExpression
-//	ApiParamExplain
-//}
-//
-//func (a *ArrayExpression) Get(params map[string]interface{}) (interface{}, error) {
-//	arr, err := a.SingleExpression.Get(params)
-//	if err != nil {
-//		return nil, err
-//	}
-//	if len(a.ApiParamExplain) == 0 {
-//		return arr, nil
-//	}
-//	list, ok := arr.([]interface{})
-//	if !ok {
-//		return nil, errors.New("path: " + a.Path + "not array")
-//	} else if len(list) == 0 {
-//		return nil, nil
-//	}
-//	result := make([]interface{}, 0, len(list))
-//	for _, en := range list {
-//		params[constant.CustomKey] = en
-//		temp, err := a.ApiParamExplain.Convert(params)
-//		if err != nil {
-//			return nil, err
-//		}
-//		result = append(result, temp)
-//	}
-//	delete(params, constant.CustomKey)
-//	return result, nil
-//}
 
 type GatewayCache interface {
 	Invoke(method string, params map[string]interface{}) (interface{}, error)

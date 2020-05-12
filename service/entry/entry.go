@@ -116,15 +116,31 @@ type Generics struct {
 type MethodParamStructure struct {
 	MethodParam
 	EntryStructure
-	GenericsConfig
+	GenericsConfig `json:"genericsValue,omitempty"`
 }
 
-func (m *MethodParamStructure) InitStructure() error {
+func (m *MethodParamStructure) Marshal() error {
+	if m.GenericsConfig != nil && len(m.GenericsConfig) > 0 {
+		bs, err := json.Marshal(m.GenericsConfig)
+		if err != nil {
+			return err
+		}
+		m.MethodParam.GenericsValues = string(bs)
+	}
+	return nil
+}
+
+func (m *MethodParamStructure) Unmarshal() error {
 	str := strings.TrimSpace(m.MethodParam.GenericsValues)
 	if str == "" {
 		return nil
 	}
-	gconfig := new(GenericsConfig)
+	var gconfig *GenericsConfig
+	if m.GenericsConfig == nil {
+		gconfig = new(GenericsConfig)
+	} else {
+		gconfig = &(m.GenericsConfig)
+	}
 	if err := json.Unmarshal([]byte(str), gconfig); err != nil {
 		return err
 	}

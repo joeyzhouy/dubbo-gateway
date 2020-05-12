@@ -38,6 +38,7 @@ type ParamMethodInfo struct {
 	EntryId     int64
 	EntryTypeId int
 	ParamClass  string
+	ParamTypeId int
 }
 
 //type Entry struct {

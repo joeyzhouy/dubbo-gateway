@@ -77,4 +77,5 @@ type RouterService interface {
 	DeleterFilter(filterId int64) error
 	ListFilters() ([]entry.ApiFilter, error)
 	GetFilter(filterId int64) (*vo.ApiFilterInfo, error)
+	ListAvailableFilters() ([]*vo.ApiFilterInfo, error)
 }

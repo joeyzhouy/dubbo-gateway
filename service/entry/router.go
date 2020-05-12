@@ -13,11 +13,13 @@ const (
 
 type ApiConfig struct {
 	Base
-	UserId   int64  `gorm:"column:user_id" json:"userId,omitempty"`
-	Desc     string `gorm:"column:desc" json:"desc,omitempty"`
-	Method   string `gorm:"column:method" json:"method,omitempty"`
-	FilterId int64  `gorm:"column:filter_id" json:"filterId,omitempty"`
-	Status   int    `gorm:"column:status" json:"status,omitempty"`
+	UserId        int64  `gorm:"column:user_id" json:"userId,omitempty"`
+	Desc          string `gorm:"column:desc" json:"desc,omitempty"`
+	Method        string `gorm:"column:method" json:"method,omitempty"`
+	FilterId      int64  `gorm:"column:filter_id" json:"filterId,omitempty"`
+	ResultMapping string `gorm:"column:result_mapping"`
+	Status        int    `gorm:"column:status" json:"status,omitempty"`
+	PageConfig    string `gorm:"column:page_config" json:"pageConfig,omitempty"`
 }
 
 func (ApiConfig) TableName() string {
@@ -43,6 +45,7 @@ type ApiFilter struct {
 	Desc        string `gorm:"column:desc" json:"desc,omitempty"`
 	ReferenceId int64  `gorm:"column:reference_id" json:"referenceId,omitempty"`
 	MethodId    int64  `gorm:"column:method_id" json:"methodId,omitempty"`
+	PageConfig  string `gorm:"column:page_config" json:"pageConfig,omitempty"`
 }
 
 func (ApiFilter) TableName() string {

@@ -372,7 +372,7 @@ func (m *methodService) GetAllMethodDeclaration() (map[int64]*vo.MethodDeclarati
 	)
 	result := make(map[int64]*vo.MethodDeclaration)
 	err := m.Table("d_entry").
-		Select("d_method.id, d_method.method_name, d_method_param.seq, d_entry.id, d_entry.type_id, d_entry.`key`").
+		Select("d_method.id as method_id, d_method.method_name, d_method_param.seq, d_entry.id as entry_id, d_entry.type_id as entry_type_id, d_entry.`key` as param_class, d_method_param.type_id as param_type_id").
 		Joins("JOIN d_method_param on d_method_param.entry_id = d_entry.id").
 		Joins("JOIN d_method on d_method.id = d_method_param.method_id").
 		Where("d_entry.is_delete = 0 and d_method_param.is_delete = 0 and d_method.is_delete = 0").Scan(&params).Error
@@ -388,12 +388,15 @@ func (m *methodService) GetAllMethodDeclaration() (map[int64]*vo.MethodDeclarati
 				},
 				Params: make([]entry.Entry, 0),
 			}
+			result[param.MethodId] = md
+		}
+		if param.ParamTypeId != entry.MethodEntryParam {
+			continue
 		}
 		md.Params = append(md.Params, entry.Entry{
 			TypeId: param.EntryTypeId,
 			Key:    param.ParamClass,
 		})
-		result[param.MethodId] = md
 	}
 	return result, nil
 }
@@ -539,7 +542,7 @@ func (m *methodService) GetMethodDetailByMethods(methods []entry.Method) ([]*vo.
 						MethodParam:    value,
 						EntryStructure: *en,
 					}
-					if err := mp.InitStructure(); err != nil {
+					if err := mp.Unmarshal(); err != nil {
 						return nil, err
 					}
 					if value.TypeId == entry.MethodEntryResult {
@@ -569,18 +572,26 @@ func (m *methodService) GetMethodDetailByMethod(me entry.Method) (*vo.Method, er
 func (m *methodService) AddMethod(method *vo.Method) (err error) {
 	relations := make([]entry.MethodParam, 0)
 	if method.Result != nil && method.Result.EntryId != 0 {
+		if err = method.Result.Marshal(); err != nil {
+			return
+		}
 		relations = append(relations, entry.MethodParam{
-			TypeId:  entry.MethodEntryResult,
-			EntryId: method.Result.EntryId,
-			Seq:     1,
+			TypeId:         entry.MethodEntryResult,
+			EntryId:        method.Result.EntryId,
+			GenericsValues: method.Result.GenericsValues,
+			Seq:            1,
 		})
 	}
 	if method.Params != nil && len(method.Params) > 0 {
 		for index, param := range method.Params {
+			if err = param.Marshal(); err != nil {
+				return
+			}
 			relations = append(relations, entry.MethodParam{
-				TypeId:  entry.MethodEntryParam,
-				EntryId: param.EntryId,
-				Seq:     index + 1,
+				TypeId:         entry.MethodEntryParam,
+				EntryId:        param.EntryId,
+				GenericsValues: param.GenericsValues,
+				Seq:            index + 1,
 			})
 		}
 	}
@@ -604,9 +615,9 @@ func (m *methodService) AddMethod(method *vo.Method) (err error) {
 		valueStrings := make([]string, 0, length)
 		valueArgs := make([]interface{}, 0, length)
 		for _, relation := range relations {
-			valueStrings = append(valueStrings, fmt.Sprintf("(%d, %d, %d, %d)", relation.TypeId, method.Method.ID, relation.EntryId, relation.Seq))
+			valueStrings = append(valueStrings, fmt.Sprintf("(%d, %d, '%s', %d, %d)", relation.TypeId, method.Method.ID, relation.GenericsValues, relation.EntryId, relation.Seq))
 		}
-		smt := "INSERT IGNORE INTO d_method_param(type_id, method_id, entry_id, seq) VALUES " + strings.Join(valueStrings, ",")
+		smt := "INSERT IGNORE INTO d_method_param(type_id, method_id, generics_values, entry_id, seq) VALUES " + strings.Join(valueStrings, ",")
 		if err := tx.Exec(smt, valueArgs...).Error; err != nil {
 			tx.Rollback()
 			return err

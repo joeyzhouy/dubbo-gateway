@@ -17,6 +17,54 @@ type routerService struct {
 	service.MethodService
 }
 
+func (r *routerService) ListAvailableFilters() ([]*vo.ApiFilterInfo, error) {
+	var (
+		err        error
+		result     []*vo.ApiFilterInfo
+		filters    []entry.ApiFilter
+		mappings   []entry.ApiParamMapping
+		voMapping  *vo.ApiParamMapping
+		mappingMap map[int64][]*vo.ApiParamMapping
+		voMappings []*vo.ApiParamMapping
+		ok         bool
+	)
+	if err = r.Select("d_api_filter.id, d_api_filter.reference_id, d_api_filter.method_id").
+		Where("is_delete = 0").Find(&filters).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return make([]*vo.ApiFilterInfo, 0), nil
+		}
+		return nil, err
+	}
+	if err = r.Where("api_id is null and is_delete = 0").Order("`index`").Find(&mappings).Error; err != nil {
+		if err != gorm.ErrRecordNotFound {
+			return nil, err
+		}
+	}
+	mappingMap = make(map[int64][]*vo.ApiParamMapping)
+	for _, mapping := range mappings {
+		voMappings, ok = mappingMap[mapping.ChainId]
+		if !ok {
+			voMappings = make([]*vo.ApiParamMapping, 0)
+		}
+		voMapping = &vo.ApiParamMapping{
+			ApiParamMapping: mapping,
+		}
+		if err = voMapping.Unmarshal(); err != nil {
+			return nil, err
+		}
+		voMappings = append(voMappings, voMapping)
+		mappingMap[mapping.ChainId] = voMappings
+	}
+	result = make([]*vo.ApiFilterInfo, len(filters))
+	for index, filter := range filters {
+		result[index] = &vo.ApiFilterInfo{
+			ApiFilter:     filter,
+			ParamMappings: mappingMap[filter.ID],
+		}
+	}
+	return result, nil
+}
+
 func (r *routerService) GetFilter(filterId int64) (*vo.ApiFilterInfo, error) {
 	result := new(vo.ApiFilterInfo)
 	err := r.Where("id = ?", filterId).Find(&(result.ApiFilter)).Error
@@ -28,12 +76,13 @@ func (r *routerService) GetFilter(filterId int64) (*vo.ApiFilterInfo, error) {
 		return nil, err
 	}
 	if len(mappings) > 0 {
-		voMappings := make([]*vo.ApiParamMapping, 0, len(mappings))
+		voMappings := make([]*vo.ApiParamMapping, len(mappings))
 		for index, mapping := range mappings {
 			voMappings[index] = &vo.ApiParamMapping{
 				ApiParamMapping: mapping,
 			}
 		}
+		result.ParamMappings = voMappings
 	}
 	if err = result.Unmarshal(); err != nil {
 		return nil, err
@@ -70,7 +119,7 @@ func (r *routerService) saveFilterMapping(tx *gorm.DB, paramMappings []*vo.ApiPa
 		}
 		valueStrings = append(valueStrings, fmt.Sprintf("(%d, %d, %d,'%s')", filterId, entry.ParamMapping, mapping.Index, mapping.Explain))
 	}
-	smt := "INSERT INTO d_api_param_mapping(chain_id, type_id, index, explain) VALUES " + strings.Join(valueStrings, ",")
+	smt := "INSERT INTO d_api_param_mapping(chain_id, type_id, `index`, `explain`) VALUES " + strings.Join(valueStrings, ",")
 	return tx.Exec(smt, valueArgs...).Error
 }
 
@@ -83,7 +132,10 @@ func (r *routerService) ModifyFilter(filter *vo.ApiFilterInfo) (err error) {
 			tx.Commit()
 		}
 	}()
-	if err = tx.Save(&filter.ApiFilter).Error; err != nil {
+	if err = tx.Model(&entry.ApiFilter{}).Where("id = ?", filter.ApiFilter.ID).UpdateColumn(map[string]interface{}{
+		"name": filter.ApiFilter.Name, "desc": filter.ApiFilter.Desc, "reference_id": filter.ApiFilter.ReferenceId,
+		"page_config": filter.ApiFilter.PageConfig,
+		"method_id":   filter.ApiFilter.MethodId}).Error; err != nil {
 		return
 	}
 	if err = tx.Delete(entry.ApiParamMapping{}, "chain_id = ? and api_id is null",
@@ -186,6 +238,9 @@ func (r *routerService) ModifyConfigStatus(configId int64, status int) (err erro
 }
 
 func (r *routerService) UpdateConfig(apiConfig *vo.ApiConfigInfo) (err error) {
+	if err = apiConfig.Marshal(); err != nil {
+		return err
+	}
 	tx := r.Begin()
 	defer func() {
 		if err != nil {
@@ -205,6 +260,15 @@ func (r *routerService) UpdateConfig(apiConfig *vo.ApiConfigInfo) (err error) {
 			}
 		}
 	}()
+
+	if err = r.Model(&entry.ApiConfig{}).Where("id = ?", apiConfig.ApiConfig.ID).
+		Updates(map[string]interface{}{"method": apiConfig.ApiConfig.Method,
+			"result_mapping": apiConfig.ApiConfig.ResultMapping, "filter_id": apiConfig.ApiConfig.FilterId,
+			"page_config": apiConfig.ApiConfig.PageConfig,
+			"desc":        apiConfig.ApiConfig.Desc}).Error; err != nil {
+		return err
+	}
+
 	if err = r.deleteConfigRelations(tx, apiConfig.ApiConfig.ID); err != nil {
 		return
 	}
@@ -318,7 +382,7 @@ func (r *routerService) join(apiConfigs []entry.ApiConfig, chains []entry.ApiCha
 			tempChains = make([]*vo.ApiChainInfo, 0)
 		}
 		voChain = &vo.ApiChainInfo{
-			Chain: chain,
+			ApiChain: chain,
 		}
 		tempMappings, ok = paramMaps[chain.ID]
 		if ok {
@@ -326,8 +390,6 @@ func (r *routerService) join(apiConfigs []entry.ApiConfig, chains []entry.ApiCha
 			for _, mapping := range tempMappings {
 				if mapping.TypeId == entry.ParamMapping {
 					voChain.ParamMappings = append(voChain.ParamMappings, mapping)
-				} else if mapping.TypeId == entry.ResultMapping {
-					voChain.ResultMapping = mapping
 				}
 			}
 		}
@@ -350,7 +412,7 @@ func (r *routerService) join(apiConfigs []entry.ApiConfig, chains []entry.ApiCha
 	}
 	for _, filter := range filters {
 		filterMap[filter.ID] = &vo.ApiFilterInfo{
-			ApiFilter:        filter,
+			ApiFilter:     filter,
 			ParamMappings: filterParamMapping[filter.ID],
 		}
 	}
@@ -365,16 +427,22 @@ func (r *routerService) join(apiConfigs []entry.ApiConfig, chains []entry.ApiCha
 }
 
 func (r *routerService) AddConfig(apiConfig *vo.ApiConfigInfo) (err error) {
+	if err = apiConfig.Marshal(); err != nil {
+		return err
+	}
 	tx := r.Begin()
 	defer func() {
 		if err != nil {
 			tx.Rollback()
-		} else if apiConfig.ApiConfig.Status == entry.Available {
-			extension.GetConfigMode().Notify(extension.ModeEvent{
-				Domain: extension.Api,
-				Type:   extension.Add,
-				Key:    apiConfig.ApiConfig.ID,
-			})
+		} else {
+			tx.Commit()
+			if apiConfig.ApiConfig.Status == entry.Available {
+				extension.GetConfigMode().Notify(extension.ModeEvent{
+					Domain: extension.Api,
+					Type:   extension.Add,
+					Key:    apiConfig.ApiConfig.ID,
+				})
+			}
 		}
 	}()
 	if err = tx.Save(&(apiConfig.ApiConfig)).Error; err != nil {
@@ -405,26 +473,26 @@ func (r *routerService) saveChains(tx *gorm.DB, apiConfig *vo.ApiConfigInfo) (er
 			tx.Rollback()
 		}
 	}()
-	for _, chain := range apiConfig.Chains {
-		if err = tx.Save(&(chain.Chain)).Error; err != nil {
+	for index, chain := range apiConfig.Chains {
+		chain.ApiChain.Seq = index + 1
+		chain.ApiId = apiConfig.ApiConfig.ID
+		if err = tx.Save(&(chain.ApiChain)).Error; err != nil {
 			return
 		}
 		if err = chain.Marshal(); err != nil {
 			return
 		}
-		valueStrings = make([]string, 0)
-		valueArgs = make([]interface{}, 0)
-		for _, mapping := range chain.ParamMappings {
-			valueStrings = append(valueStrings, fmt.Sprintf("(%d, %d, %d, %d,'%s')", apiConfig.ApiConfig.ID,
-				chain.Chain.ID, entry.ParamMapping, mapping.Index, mapping.Explain))
-		}
-		if chain.ResultMapping != nil {
-			valueStrings = append(valueStrings, fmt.Sprintf("(%d, %d, %d, %d,'%s')", apiConfig.ApiConfig.ID,
-				chain.Chain.ID, entry.ResultMapping, chain.ResultMapping.Index, chain.ResultMapping.Explain))
-		}
-		smt := "INSERT INTO d_api_param_mapping(api_id, chain_id, type_id, index, explain) VALUES " + strings.Join(valueStrings, ",")
-		if err = tx.Exec(smt, valueArgs...).Error; err != nil {
-			return
+		if chain.ParamMappings != nil && len(chain.ParamMappings) > 0 {
+			valueStrings = make([]string, 0)
+			valueArgs = make([]interface{}, 0)
+			for _, mapping := range chain.ParamMappings {
+				valueStrings = append(valueStrings, fmt.Sprintf("(%d, %d, %d, %d,'%s')", apiConfig.ApiConfig.ID,
+					chain.ApiChain.ID, entry.ParamMapping, mapping.Index, mapping.Explain))
+			}
+			smt := "INSERT INTO d_api_param_mapping(api_id, chain_id, type_id, `index`, `explain`) VALUES " + strings.Join(valueStrings, ",")
+			if err = tx.Exec(smt, valueArgs...).Error; err != nil {
+				return
+			}
 		}
 	}
 	return

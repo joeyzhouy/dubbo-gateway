@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"github.com/apache/dubbo-go/common/logger"
 	dubboConfig "github.com/apache/dubbo-go/config"
+	"github.com/apache/dubbo-go/protocol/dubbo"
 	"github.com/go-errors/errors"
 	perrors "github.com/pkg/errors"
 	"strconv"
@@ -44,7 +45,11 @@ func (b *base) Invoke(method string, params map[string]interface{}) (interface{}
 	if result, err = b.doChain(apiInfo.MethodChain, params, constant.ResultChainMethodPrefix); err != nil {
 		return nil, err
 	}
-	return result, nil
+	// reduce result
+	if apiInfo.ResultRule == nil {
+		return result, nil
+	}
+	return apiInfo.ResultRule.Convert(params)
 }
 
 func (b *base) doFilter(filterId int64, params map[string]interface{}) (err error) {
@@ -57,7 +62,7 @@ func (b *base) doFilter(filterId int64, params map[string]interface{}) (err erro
 	if !ok {
 		return errors.New("no found filter")
 	}
-	referenceConfig, err = getReference(b.referenceId(filter.ReferenceId));
+	referenceConfig, err = getReference(b.referenceId(filter.ReferenceId))
 	if err != nil {
 		return err
 	}
@@ -78,7 +83,7 @@ func (b *base) doChain(chain *common.ApiChain, params map[string]interface{}, re
 		referenceConfig   *dubboConfig.ReferenceConfig
 		paramClasses      []string
 		requestParamValue []interface{}
-		resultKey         string
+		customMap         map[string]interface{}
 	)
 	index := 0
 	for c := chain; c != nil; c = c.Next {
@@ -100,39 +105,19 @@ func (b *base) doChain(chain *common.ApiChain, params map[string]interface{}, re
 		if err != nil {
 			return
 		}
-		resultKey = fmt.Sprintf(resultPrefix+"%d", index)
-		params[resultKey] = result
-		if chain.ResultRule != nil && len(chain.ResultRule) > 0 {
-			if err = b.reduceResult(chain.ResultRule, params, resultKey); err != nil {
-				return
-			}
-			result = params[resultKey]
-		}
+		customMap = params[constant.CustomKey].(map[string]interface{})
+		customMap[fmt.Sprintf(resultPrefix+"%d", index)] = result
+		params[constant.CustomKey] = customMap
 		index++
 	}
 	return
-}
-
-func (b *base) reduceResult(explains []*common.ApiParamExplain, params map[string]interface{}, resultKey string) error {
-	if explains == nil || len(explains) == 0 {
-		return nil
-	}
-	if len(explains) > 1 {
-		return errors.New("not support")
-	}
-	if result, err := explains[0].Convert(params); err != nil {
-		return err
-	} else {
-		params[resultKey] = result
-	}
-	return nil
 }
 
 func (b *base) buildParameter(explains []*common.ApiParamExplain, params map[string]interface{}) ([]interface{}, error) {
 	if explains == nil || len(explains) == 0 {
 		return nil, nil
 	}
-	paramValues := make([]interface{}, 0, len(explains))
+	paramValues := make([]interface{}, len(explains))
 	for index, explain := range explains {
 		if temp, err := explain.Convert(params); err != nil {
 			return nil, err
@@ -144,6 +129,7 @@ func (b *base) buildParameter(explains []*common.ApiParamExplain, params map[str
 }
 
 func (b *base) init() error {
+	dubbo.SetClientConf(dubbo.GetDefaultClientConfig())
 	registries, err := b.RegisterService.ListAll()
 	if err != nil {
 		return perrors.Errorf("get registries error: %v", err)
@@ -174,10 +160,21 @@ func (b *base) init() error {
 	if err != nil {
 		return err
 	}
+	filters, err := b.RouterService.ListAvailableFilters()
+	if err != nil {
+		return err
+	}
+	filtersMap := make(map[int64]*vo.ApiFilterInfo)
+	for _, filter := range filters {
+		filtersMap[filter.ID] = filter
+	}
 	b.ApiCache = &common.ApiCache{}
 	b.ApiCache.SetApiInfos(make(map[string]*common.ApiInfo))
 	b.ApiCache.SetFilters(make(map[string]*common.ApiFilter))
 	for _, apiConfigInfo := range apiConfigInfos {
+		if apiConfigInfo.ApiConfig.FilterId != 0 {
+			apiConfigInfo.Filter = filtersMap[apiConfigInfo.ApiConfig.FilterId]
+		}
 		info, filter, err := apiConfigInfo.ConvertCache(methodDMap)
 		if err != nil {
 			return err
@@ -301,7 +298,8 @@ func NewLocalCache(mode extension.Mode) (common.GatewayCache, error) {
 	}
 	err := cache.init()
 	if err != nil {
-		panic("create local cache error:" + err.Error())
+		logger.Errorf("create local cache error: %v", perrors.WithStack(err))
+		panic(err)
 	}
 	if err = mode.SubscribeEvent(extension.Registry, extension.AllType, baseKey, newRegistryOperator(cache)); err != nil {
 		return nil, err

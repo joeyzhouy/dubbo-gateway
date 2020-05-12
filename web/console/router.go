@@ -102,6 +102,7 @@ func (r *routerController) ListAllAvailable(ctx *gin.Context) {
 	utils.ParamMissResponseOperation(ctx)
 }
 
+
 func (r *routerController) CreateRouter(ctx *gin.Context) {
 	api := new(vo.ApiConfigInfo)
 	if utils.IsErrorEmpty(ctx.ShouldBindJSON(api), ctx) {
